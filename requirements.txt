@@ -1,0 +1,17 @@
+# Core Dependencies
+openai>=1.0.0
+openai-whisper>=20231117
+python-dotenv>=1.0.0
+ffmpeg-python>=0.2.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Progress Bars
+tqdm>=4.65.0
+
+# Audio Analysis
+librosa>=0.10.0
+
+# GUI
+gradio>=4.0.0
