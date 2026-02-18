@@ -68,7 +68,7 @@ MODEL_OPTIONS = ["tiny", "base", "small", "medium", "large"]
 DEVICE_OPTIONS = ["auto", "cpu", "cuda", "mps"]
 
 # Translation model options
-TRANSLATION_MODEL_OPTIONS = ["deepseek", "gemini", "qwen", "claude", "gpt"]
+TRANSLATION_MODEL_OPTIONS = ["google", "deepseek", "gemini", "qwen", "claude", "gpt"]
 
 # Output format options
 OUTPUT_FORMAT_OPTIONS = ["仅字幕 (SRT)", "MP4 视频 (带字幕)", "MP3 音频 (带歌词封面)"]
@@ -81,6 +81,11 @@ class OmniTranscribeGUI:
         self.config = get_config()
         self.output_dir = Path("output")
         self.output_dir.mkdir(exist_ok=True)
+
+        # Set default paths
+        project_root = Path(__file__).parent.parent
+        self.default_background = project_root / "assets" / "default_background.png"
+        self.default_font = project_root / "ChillDuanSansVF.ttf"
 
     def process_media(
         self,
@@ -97,7 +102,7 @@ class OmniTranscribeGUI:
         artist_name: Optional[str] = "",
         album_name: Optional[str] = "",
         progress=gr.Progress()
-    ) -> Tuple[str, str, str]:
+    ) -> Tuple[str, str, str, Optional[str]]:
         """
         Process media file with transcription and translation
 
@@ -117,7 +122,7 @@ class OmniTranscribeGUI:
             progress: Gradio progress tracker
 
         Returns:
-            Tuple of (original_srt_path, translated_srt_path, final_output_path)
+            Tuple of (original_srt_path, translated_srt_path, result_message, preview_file_path)
         """
         try:
             # Convert language names to codes
@@ -126,11 +131,11 @@ class OmniTranscribeGUI:
 
             # Step 1: Validate inputs
             if not media_file:
-                return None, None, "❌ 请上传音频/视频文件"
+                return None, None, "❌ 请上传音频/视频文件", None
 
             media_path = Path(media_file)
             if not media_path.exists():
-                return None, None, f"❌ 文件不存在: {media_file}"
+                return None, None, f"❌ 文件不存在: {media_file}", None
 
             base_name = media_path.stem
             output_base = self.output_dir / base_name
@@ -152,7 +157,7 @@ class OmniTranscribeGUI:
 
             # Step 3: Transcribe audio
             progress(0.3, desc=f"正在转录 ({source_language})...")
-            transcriber = AudioTranscriber(model_size=whisper_model, device=device)
+            transcriber = AudioTranscriber(model_size=whisper_model, device=device, use_cache=True)
 
             srt_content = transcriber.transcribe_audio(
                 current_audio_path,
@@ -187,8 +192,12 @@ class OmniTranscribeGUI:
             final_output_path = None
 
             if output_format == "MP4 视频 (带字幕)":
+                # Use default background if none provided
                 if not background_image:
-                    return str(original_srt_path), str(translated_srt_path) if translated_srt_path else "", "❌ 生成MP4需要背景图片"
+                    if self.default_background.exists():
+                        background_image = str(self.default_background)
+                    else:
+                        return str(original_srt_path), str(translated_srt_path) if translated_srt_path else "", "❌ 生成MP4需要背景图片（或默认背景不存在）", None
 
                 progress(0.8, desc="生成MP4视频...")
 
@@ -245,30 +254,46 @@ class OmniTranscribeGUI:
             return (
                 str(original_srt_path),
                 str(translated_srt_path) if translated_srt_path else "",
-                result_message
+                result_message,
+                str(final_output_path) if final_output_path else None
             )
 
         except Exception as e:
-            return None, None, f"❌ 处理失败: {str(e)}"
+            return None, None, f"❌ 处理失败: {str(e)}", None
 
     def launch(self, share: bool = False):
         """Launch the Gradio interface"""
 
-        with gr.Blocks(
-            title="OmniTranscribe - 多语言音频转录与翻译",
-            theme=gr.themes.Soft(),
-            css="""
+        custom_css = """
+            .gradio-container {
+                max-width: 100% !important;
+                padding: 20px !important;
+            }
+            .header {
+                text-align: center;
+                padding: 20px;
+            }
+            .header h1 {
+                margin-bottom: 5px;
+            }
+            /* 响应式布局 */
+            @media (max-width: 768px) {
                 .gradio-container {
-                    max-width: 1200px !important;
+                    padding: 10px !important;
                 }
-                .header {
-                    text-align: center;
-                    padding: 20px;
-                }
-                .header h1 {
-                    margin-bottom: 5px;
-                }
-            """
+            }
+            /* 确保列在小屏幕上堆叠 */
+            .gradio-row {
+                flex-wrap: wrap !important;
+            }
+            .gradio-column {
+                min-width: 300px !important;
+                flex: 1 1 300px !important;
+            }
+        """
+
+        with gr.Blocks(
+            title="OmniTranscribe - 多语言音频转录与翻译"
         ) as interface:
 
             # Header
@@ -340,9 +365,13 @@ class OmniTranscribeGUI:
 
                     # Show additional options based on output format
                     with gr.Group(visible=False) as mp4_options:
+                        # Set default background if exists
+                        default_bg_value = str(self.default_background) if self.default_background.exists() else None
                         background_image = gr.Image(
-                            label="背景图片 (MP4)",
-                            type="filepath"
+                            value=default_bg_value,
+                            label="背景图片 (MP4) - 留空使用默认背景",
+                            type="filepath",
+                            sources=["upload", "clipboard"]
                         )
                         with gr.Row():
                             subtitle_position = gr.Radio(
@@ -394,6 +423,20 @@ class OmniTranscribeGUI:
                 interactive=False
             )
 
+            # Preview section
+            gr.Markdown("## 🎬 预览")
+            preview_path = gr.State(None)  # Hidden state for preview path
+            with gr.Row():
+                video_preview = gr.Video(
+                    label="MP4 视频预览",
+                    visible=False,
+                    autoplay=True
+                )
+                audio_preview = gr.Audio(
+                    label="MP3 音频预览",
+                    visible=False
+                )
+
             # Event handlers
             def update_output_options(output_format):
                 """Show/hide options based on output format"""
@@ -411,6 +454,15 @@ class OmniTranscribeGUI:
             )
 
             # Process button click
+            def show_preview(output_format, preview_path):
+                """Show appropriate preview based on output format and file path"""
+                if output_format == "MP4 视频 (带字幕)" and preview_path:
+                    return gr.update(visible=True, value=preview_path), gr.update(visible=False)
+                elif output_format == "MP3 音频 (带歌词封面)" and preview_path:
+                    return gr.update(visible=False), gr.update(visible=True, value=preview_path)
+                else:
+                    return gr.update(visible=False), gr.update(visible=False)
+
             process_btn.click(
                 fn=self.process_media,
                 inputs=[
@@ -427,7 +479,11 @@ class OmniTranscribeGUI:
                     artist_name,
                     album_name,
                 ],
-                outputs=[original_srt_output, translated_srt_output, final_output]
+                outputs=[original_srt_output, translated_srt_output, final_output, preview_path]
+            ).then(
+                fn=show_preview,
+                inputs=[output_format, preview_path],
+                outputs=[video_preview, audio_preview]
             )
 
             # Footer
@@ -441,7 +497,12 @@ class OmniTranscribeGUI:
             """)
 
         # Launch
-        interface.launch(share=share, show_error=True)
+        interface.launch(
+            share=share,
+            show_error=True,
+            theme=gr.themes.Soft(),
+            css=custom_css
+        )
 
 
 def main():

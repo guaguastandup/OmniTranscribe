@@ -79,6 +79,13 @@ from simple_mp3_embedder import SimpleMP3Embedder
 from config import get_config, save_config
 from interactive import run_interactive
 
+# Import cache module
+try:
+    from cache import get_cache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+
 def main():
     # Load configuration defaults
     config = get_config()
@@ -285,6 +292,21 @@ def main():
         "--album-name",
         help="Album name for MP3 metadata embedding (use with --embed-mp3-metadata)"
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable transcription cache (will re-transcribe even if cached result exists)"
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear all cached transcriptions and exit"
+    )
+    parser.add_argument(
+        "--cache-stats",
+        action="store_true",
+        help="Show cache statistics and exit"
+    )
 
     args = parser.parse_args()
 
@@ -299,6 +321,38 @@ def main():
     if args.reset_config:
         config.reset_to_defaults()
         print("Configuration reset to defaults.")
+        sys.exit(0)
+
+    # Handle cache commands
+    if args.clear_cache:
+        if CACHE_AVAILABLE:
+            cache = get_cache()
+            cache.clear()
+            print("All cached transcriptions have been cleared.")
+        else:
+            print("Cache module not available.")
+        sys.exit(0)
+
+    if args.cache_stats:
+        if CACHE_AVAILABLE:
+            cache = get_cache()
+            stats = cache.get_cache_stats()
+            print("Cache Statistics:")
+            print("=" * 40)
+            print(f"Total entries: {stats['total_entries']}")
+            print(f"Total size: {stats['total_size_mb']} MB")
+            print(f"Cache directory: {stats['cache_dir']}")
+
+            # List cached items
+            cached = cache.list_cached()
+            if cached:
+                print("\nCached items:")
+                for item in cached:
+                    print(f"  - {item['filename']} ({item['model']}, {item['language']}) - {item['timestamp']}")
+            else:
+                print("\nNo cached transcriptions.")
+        else:
+            print("Cache module not available.")
         sys.exit(0)
 
     # Handle preset options
@@ -561,7 +615,7 @@ def main():
             print(f"Step 2: Transcribing audio ({source_lang}) to subtitles")
             print("=" * 50)
 
-            transcriber = AudioTranscriber(model_size=args.model, device=args.device)
+            transcriber = AudioTranscriber(model_size=args.model, device=args.device, use_cache=not args.no_cache)
 
             # Configure transcription language and mode
             if args.strict_mode:

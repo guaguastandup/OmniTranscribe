@@ -6,6 +6,14 @@ from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 from dotenv import load_dotenv
 
+# Google Translate support (free, no API key required)
+try:
+    from deep_translator import GoogleTranslator
+    GOOGLETRANS_AVAILABLE = True
+except ImportError:
+    GOOGLETRANS_AVAILABLE = False
+    print("Warning: deep-translator not available. Install with: pip install deep-translator")
+
 
 # Language code to name mapping
 LANGUAGE_NAMES = {
@@ -114,6 +122,12 @@ class UniversalTranslator:
                 "default_url": "https://api.openai.com/v1",
                 "model_env": "OPENAI_MODEL",
                 "default_model": "gpt-3.5-turbo"
+            },
+            "google": {
+                "env_key": None,  # No API key required for Google Translate
+                "default_url": None,
+                "model_env": None,
+                "default_model": "google-translate"
             }
         }
 
@@ -129,7 +143,9 @@ class UniversalTranslator:
             "claude-opus": "claude",
             "gpt": "gpt",
             "gpt-4": "gpt",
-            "gpt-4-turbo": "gpt"
+            "gpt-4-turbo": "gpt",
+            "google": "google",
+            "google-translate": "google"
         }
 
         # Determine service provider
@@ -153,6 +169,17 @@ class UniversalTranslator:
             self.api_key = api_key or os.getenv('TRANSLATION_API_KEY')
             configured_url = base_url or os.getenv('TRANSLATION_URL')
             self.actual_model_name = model  # Use the provided model name directly
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=configured_url)
+        elif self.service == "google":
+            # Google Translate doesn't need API key or OpenAI client
+            self.api_key = None
+            configured_url = None
+            self.actual_model_name = "google-translate"
+            self.client = None
+            if not GOOGLETRANS_AVAILABLE:
+                raise ImportError("Google Translate is not available. Please install deep-translator: pip install deep-translator")
+            # deep-translator doesn't need persistent initialization
+            self.google_translator = None
         else:
             service_config = service_configs[self.service]
             self.api_key = api_key or os.getenv(service_config["env_key"]) or os.getenv('TRANSLATION_API_KEY')
@@ -164,11 +191,11 @@ class UniversalTranslator:
             # Get model name from environment variable or use default
             self.actual_model_name = os.getenv(service_config["model_env"]) or service_config["default_model"]
 
-        # Configure OpenAI client
-        self.client = openai.OpenAI(
-            api_key=self.api_key,
-            base_url=configured_url
-        )
+            # Configure OpenAI client
+            self.client = openai.OpenAI(
+                api_key=self.api_key,
+                base_url=configured_url
+            )
 
     def load_prompt(self, prompt_path: str = "prompt.md") -> str:
         """
@@ -205,6 +232,10 @@ class UniversalTranslator:
             Translated SRT content in target language
         """
         print(f"Starting translation to {target_language} with {self.model} model...")
+
+        # Use Google Translate if service is google
+        if self.service == "google":
+            return self._translate_with_google(srt_content, target_language)
 
         # Parse SRT content into chunks
         chunks = self._split_srt_into_chunks(srt_content, chunk_size)
@@ -248,6 +279,65 @@ class UniversalTranslator:
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(content)
         print(f"Saved translated subtitles to: {output_path}")
+
+    def _translate_with_google(self, srt_content: str, target_language: str = "zh") -> str:
+        """
+        Translate SRT content using Google Translate (free, no API key required).
+
+        Args:
+            srt_content: Original SRT content
+            target_language: Target language code (zh, en, ja, etc.)
+
+        Returns:
+            Translated SRT content
+        """
+        print("Using Google Translate (free service via deep-translator)...")
+
+        # Parse SRT content
+        subtitle_blocks = self._parse_srt_content(srt_content)
+        print(f"Translating {len(subtitle_blocks)} subtitle entries with Google Translate...")
+
+        translated_blocks = []
+        for i, block in enumerate(subtitle_blocks, 1):
+            try:
+                # Extract the text content from SRT block
+                lines = block.split('\n')
+                # Keep index and timestamps
+                index = lines[0]
+                timestamp = lines[1]
+                # Translate the text content
+                text_lines = lines[2:]
+                translated_text_lines = []
+
+                for line in text_lines:
+                    if line.strip():  # Only translate non-empty lines
+                        try:
+                            # Use deep-translator's GoogleTranslator
+                            translated = GoogleTranslator(source='auto', target=target_language).translate(line)
+                            translated_text_lines.append(translated)
+                        except Exception as e:
+                            print(f"Warning: Failed to translate line {i}: {e}")
+                            translated_text_lines.append(line)  # Keep original on error
+                    else:
+                        translated_text_lines.append(line)
+
+                # Reconstruct the block
+                translated_block = f"{index}\n{timestamp}\n" + "\n".join(translated_text_lines)
+                translated_blocks.append(translated_block)
+
+                # Print progress
+                if i % 10 == 0:
+                    print(f"Translated {i}/{len(subtitle_blocks)} entries...")
+
+                # Small delay to avoid rate limiting
+                time.sleep(0.1)
+
+            except Exception as e:
+                print(f"Warning: Failed to translate block {i}: {e}")
+                translated_blocks.append(block)  # Keep original on error
+
+        print("Google Translate completed!")
+        return "\n\n".join(translated_blocks)
 
     def _split_srt_into_chunks(self, srt_content: str, chunk_size: int) -> List[str]:
         """
@@ -461,6 +551,7 @@ class UniversalTranslator:
             List of supported model names
         """
         return [
+            "google", "google-translate",
             "deepseek", "deepseek-chat",
             "gemini", "gemini-pro", "gemini-2.5-pro",
             "qwen", "qwen-max",
@@ -477,7 +568,7 @@ class UniversalTranslator:
         Returns:
             List of supported service provider names
         """
-        return ["deepseek", "gemini", "qwen", "claude", "gpt", "custom"]
+        return ["google", "deepseek", "gemini", "qwen", "claude", "gpt", "custom"]
 
     @staticmethod
     def get_model_info(model: str) -> Dict[str, str]:

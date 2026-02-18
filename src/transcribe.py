@@ -7,15 +7,29 @@ import torch
 from datetime import timedelta
 from typing import List, Optional, Callable
 
+# Import cache module
+try:
+    from cache import get_cache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+
 class AudioTranscriber:
-    def __init__(self, model_size: str = "base", device: str = "auto"):
+    def __init__(self, model_size: str = "base", device: str = "auto", use_cache: bool = True):
         """
         Initialize the audio transcriber with Whisper model
 
         Args:
             model_size: Size of the Whisper model (tiny, base, small, medium, large)
             device: Device to use for inference ("auto", "cpu", "cuda", "mps")
+            use_cache: Whether to use transcription cache (default: True)
         """
+        self.model_size = model_size
+        self.use_cache = use_cache and CACHE_AVAILABLE
+        if self.use_cache:
+            self.cache = get_cache()
+        else:
+            self.cache = None
         # Determine the device to use
         if device == "auto":
             if torch.cuda.is_available():
@@ -61,6 +75,15 @@ class AudioTranscriber:
 
         print(f"Transcribing audio file: {audio_path}")
         print(f"Using language: {language}")
+
+        # Check cache first
+        if self.use_cache and self.cache:
+            cached_result = self.cache.get(audio_path, self.model_size, language)
+            if cached_result is not None:
+                print("Using cached transcription result!")
+                return cached_result
+            else:
+                print("No cached result found, proceeding with transcription...")
 
         # Get audio duration for progress estimation
         try:
@@ -111,6 +134,10 @@ class AudioTranscriber:
 
             # Convert to SRT format
             srt_content = self._convert_to_srt(result["segments"])
+
+            # Save to cache
+            if self.use_cache and self.cache:
+                self.cache.set(audio_path, self.model_size, srt_content, language)
 
             # # Validate that the transcription is in Japanese
             # if self._contains_english_text(srt_content):

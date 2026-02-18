@@ -35,10 +35,13 @@ OmniTranscribe 是一款功能强大的多语言音频视频处理工具，支�
 
 - **多语言转录**：使用 OpenAI Whisper 支持 99+ 种语言的语音识别
 - **灵活翻译**：支持多种 AI 翻译服务，可翻译至任意语言
+- **免费翻译**：内置 Google Translate 支持，无需 API 密钥
 - **格式转换**：支持 SRT、VTT、LRC 字幕格式互转
-- **视频生成**：生成带同步字幕的 MP4 视频
+- **视频生成**：生成带同步字幕的 MP4 视频（默认背景图）
+- **智能缓存**：基于文件哈希的缓存机制，避免重复转录
 - **批量处理**：支持批量处理多个文件
 - **交互模式**：友好的命令行交互界面
+- **响应式 GUI**：自适应屏幕尺寸的 Web 界面
 
 ### 支持的语言
 
@@ -52,6 +55,7 @@ Whisper 支持 99+ 种语言，包括：
 
 ### 翻译服务
 
+- **Google Translate** ⭐ 免费无需 API 密钥（使用 deep-translator）
 - **DeepSeek**（推荐）- 性价比高
 - **Google Gemini** - 高质量翻译
 - **阿里通义千问** - 中文优化
@@ -271,6 +275,29 @@ python run.py --quality audio_file.mp3
 python run.py --gpu audio_file.mp3
 ```
 
+#### 缓存管理
+
+```bash
+# 查看缓存统计
+python run.py --cache-stats
+
+# 清除所有缓存
+python run.py --clear-cache
+
+# 禁用缓存（强制重新转录）
+python run.py audio.mp3 --no-cache
+```
+
+#### 仅转录不翻译
+
+```bash
+# 只转录，不翻译
+python run.py audio.mp3 --target-language none
+
+# GUI 模式：选择"不翻译"选项
+python run.py --gui
+```
+
 ## 配置
 
 ### 环境变量 (.env)
@@ -318,18 +345,23 @@ OmniTranscribe/
 ├── CHANGELOG.md               # 变更日志
 ├── CONTRIBUTING.md            # 贡献指南
 ├── prompt.md                  # 翻译提示词
+├── assets/                    # 默认资源
+│   ├── default_background.png  # 默认视频背景
+│   └── generate_default_bg.py  # 背景生成脚本
 └── src/                       # 源代码目录
     ├── __init__.py
     ├── main.py                # 主入口
     ├── transcribe.py          # 音频转录
-    ├── translator.py          # AI 翻译
+    ├── translator.py          # AI 翻译（含 Google Translate）
     ├── converter.py           # 字幕转换
     ├── video_converter.py     # 视频转音频
     ├── final_video_generator.py   # 视频生成
     ├── simple_mp3_embedder.py     # MP3 元数据
     ├── batch_processor.py     # 批量处理
+    ├── cache.py               # 缓存管理
     ├── interactive.py         # 交互界面
-    └── config.py              # 配置管理
+    ├── config.py              # 配置管理
+    └── gui.py                 # Web 图形界面
 ```
 
 ## 常见问题

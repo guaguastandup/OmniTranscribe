@@ -35,10 +35,13 @@ Input Audio/Video → Transcribe → Translate → Generate Output
 
 - **Multilingual Transcription**: Convert audio/video to text in 99+ languages using OpenAI Whisper
 - **Flexible Translation**: Translate subtitles between any languages using multiple AI models
+- **Free Translation**: Built-in Google Translate support, no API key required
 - **Format Conversion**: Support SRT, VTT, and LRC subtitle formats
-- **Video Generation**: Create MP4 videos with embedded subtitles
+- **Video Generation**: Create MP4 videos with embedded subtitles (default background included)
+- **Smart Caching**: File hash-based caching to avoid re-transcription
 - **Batch Processing**: Process multiple files automatically
 - **Interactive Mode**: User-friendly command-line interface
+- **Responsive GUI**: Web interface that adapts to screen size
 
 ### Supported Languages
 
@@ -51,6 +54,7 @@ Portuguese, Italian, Dutch, Polish, Turkish, Vietnamese, Thai, Swedish, and more
 
 ### Translation Services
 
+- **Google Translate** ⭐ Free, no API key required (via deep-translator)
 - **DeepSeek** (default) - Cost-effective and fast
 - **Google Gemini** - High-quality translations
 - **Alibaba Qwen** - Excellent for Chinese
@@ -267,6 +271,29 @@ python run.py --quality audio_file.mp3
 python run.py --gpu audio_file.mp3
 ```
 
+### Cache Management
+
+```bash
+# View cache statistics
+python run.py --cache-stats
+
+# Clear all cache
+python run.py --clear-cache
+
+# Disable cache (force re-transcription)
+python run.py audio.mp3 --no-cache
+```
+
+### Transcription Only (No Translation)
+
+```bash
+# Transcribe only, skip translation
+python run.py audio.mp3 --target-language none
+
+# GUI mode: select "No Translation" option
+python run.py --gui
+```
+
 ## Configuration
 
 ### Environment Variables (.env)
@@ -314,18 +341,23 @@ OmniTranscribe/
 ├── CHANGELOG.md               # Changelog
 ├── CONTRIBUTING.md            # Contributing guide
 ├── prompt.md                  # Translation prompt
+├── assets/                    # Default resources
+│   ├── default_background.png  # Default video background
+│   └── generate_default_bg.py  # Background generator
 └── src/                       # Source directory
     ├── __init__.py
     ├── main.py                # Main entry point
     ├── transcribe.py          # Audio transcription
-    ├── translator.py          # AI translation
+    ├── translator.py          # AI translation (with Google Translate)
     ├── converter.py           # Subtitle converter
     ├── video_converter.py     # Video to audio
     ├── final_video_generator.py   # Video generator
     ├── simple_mp3_embedder.py     # MP3 metadata
     ├── batch_processor.py     # Batch processing
+    ├── cache.py               # Cache management
     ├── interactive.py         # Interactive CLI
-    └── config.py              # Configuration
+    ├── config.py              # Configuration
+    └── gui.py                 # Web GUI interface
 ```
 
 ## Troubleshooting

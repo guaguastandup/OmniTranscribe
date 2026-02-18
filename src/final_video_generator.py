@@ -21,6 +21,11 @@ from typing import List, Tuple, Optional
 from converter import SubtitleConverter
 
 
+def _get_project_root() -> Path:
+    """Get the project root directory."""
+    return Path(__file__).parent.parent
+
+
 class FinalVideoGenerator:
     """Generate MP4 videos with synchronized subtitles using FFmpeg."""
 
@@ -49,13 +54,24 @@ class FinalVideoGenerator:
                 print(f"Using custom font: {custom_font_path}")
                 return custom_font_path
             else:
-                print(f"Warning: Custom font not found at {custom_font_path}, falling back to system font")
+                print(f"Warning: Custom font not found at {custom_font_path}, falling back to default font")
 
         # Check environment variable for custom font
         env_font = os.environ.get('OMNITRANSCRIBE_FONT_PATH')
         if env_font and os.path.exists(env_font):
             print(f"Using font from environment variable: {env_font}")
             return env_font
+
+        # Check project default fonts
+        project_root = _get_project_root()
+        default_fonts = [
+            project_root / "ChillDuanSansVF.ttf",
+            project_root / "ChillHuoFangSong_Regular.otf",
+        ]
+        for font_path in default_fonts:
+            if font_path.exists():
+                print(f"Using project default font: {font_path}")
+                return str(font_path)
 
         system = platform.system()
 
