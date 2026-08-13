@@ -1,49 +1,50 @@
 #!/usr/bin/env python3
-"""
-OmniTranscribe 启动脚本
-从项目根目录运行此脚本来启动 OmniTranscribe
+"""OmniTranscribe launcher.
 
 Usage:
-    python run.py              # 启动命令行界面
-    python run.py --gui        # 启动图形界面 (GUI)
-    python run.py --gui --share  # 启动GUI并创建公共链接
+    python run.py                 # CLI
+    python run.py --gui           # product workspace in browser
+    python run.py --desktop       # product workspace in native desktop window
+    python run.py --legacy-gui    # previous one-shot Gradio GUI
 """
 
 import sys
-import os
 from pathlib import Path
 
-# 添加 src 目录到 Python 路径
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
+ROOT = Path(__file__).resolve().parent
+SRC = ROOT / "src"
+sys.path.insert(0, str(SRC))
 
-# Load environment variables from .env file (for run.py itself)
 try:
     from dotenv import load_dotenv
-    env_path = Path(__file__).parent / ".env"
+    env_path = ROOT / ".env"
     if env_path.exists():
         load_dotenv(env_path)
 except ImportError:
     pass
 
-# 导入并运行 main
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="OmniTranscribe - 多语言音频转录与翻译工具")
-    parser.add_argument("--gui", action="store_true", help="启动图形界面 (GUI)")
-    parser.add_argument("--share", action="store_true", help="创建公共链接 (仅用于GUI模式)")
-
-    # Parse known args to allow other args to pass through to main
+    parser.add_argument("--gui", action="store_true", help="启动新的项目式 GUI")
+    parser.add_argument("--desktop", action="store_true", help="在原生桌面窗口中启动产品界面")
+    parser.add_argument("--legacy-gui", action="store_true", help="启动旧版一次性处理 GUI")
+    parser.add_argument("--share", action="store_true", help="创建 Gradio 公共链接（仅浏览器 GUI）")
     args, remaining = parser.parse_known_args()
 
-    if args.gui:
-        # Launch GUI
+    if args.desktop:
+        from product_gui import ProductGUI
+        ProductGUI().launch_desktop()
+    elif args.gui:
+        from product_gui import ProductGUI
+        ProductGUI().launch(share=args.share)
+    elif args.legacy_gui:
         from src import gui
         sys.argv = ["gui.py"] + (["--share"] if args.share else [])
         gui.main()
     else:
-        # Launch CLI
         from src import main
         sys.argv = ["main.py"] + remaining
         main()
