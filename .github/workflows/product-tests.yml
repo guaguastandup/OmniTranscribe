@@ -1,0 +1,28 @@
+name: Product Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "agent/**"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install lightweight test dependency
+        run: python -m pip install platformdirs
+      - name: Compile product modules
+        run: |
+          python -m py_compile \
+            run.py desktop_entry.py \
+            src/app_settings.py src/product_gui.py src/project_store.py \
+            src/resumable_pipeline.py src/subtitle_utils.py
+      - name: Run persistence and subtitle tests
+        run: PYTHONPATH=. python -m unittest tests.test_project_store tests.test_resumable_pipeline -v

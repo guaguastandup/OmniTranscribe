@@ -1,0 +1,107 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install lightweight test dependency
+        run: python -m pip install platformdirs
+      - name: Run persistence and subtitle tests
+        run: PYTHONPATH=. python -m unittest tests.test_project_store tests.test_resumable_pipeline -v
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-desktop.txt
+      - name: Bundle FFmpeg
+        shell: pwsh
+        run: |
+          choco install ffmpeg -y --no-progress
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          Copy-Item (Get-Command ffmpeg).Source bin\ffmpeg.exe
+          Copy-Item (Get-Command ffprobe).Source bin\ffprobe.exe
+      - name: Build desktop application
+        run: pyinstaller --clean --noconfirm packaging/OmniTranscribe.spec
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $version = "${{ github.ref_name }}"
+          if ($version.StartsWith("v")) { $version = $version.Substring(1) }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=$version" packaging\windows\OmniTranscribe.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniTranscribe-Windows
+          path: release/OmniTranscribe-Windows-Setup.exe
+          if-no-files-found: error
+
+  macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-desktop.txt
+      - name: Bundle FFmpeg
+        run: |
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          mkdir -p bin
+          cp "$(command -v ffmpeg)" bin/ffmpeg
+          cp "$(command -v ffprobe)" bin/ffprobe
+          chmod +x bin/ffmpeg bin/ffprobe
+      - name: Build desktop application
+        run: pyinstaller --clean --noconfirm packaging/OmniTranscribe.spec
+      - name: Build DMG
+        run: |
+          mkdir -p release
+          hdiutil create -volname "OmniTranscribe" -srcfolder "dist/OmniTranscribe.app" -ov -format UDZO "release/OmniTranscribe-macOS.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniTranscribe-macOS
+          path: release/OmniTranscribe-macOS.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" release-assets/* --draft --generate-notes --title "${{ github.ref_name }}"

@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Desktop packaging and native window
+platformdirs>=4.2.0
+keyring>=25.0.0
+pywebview>=5.0.0,<7.0.0
+pyinstaller>=6.21.0,<7.0.0
