@@ -131,6 +131,9 @@ python run.py --gui
 
 # 创建公共链接（可远程访问）
 python run.py --gui --share
+
+# 启动原生桌面窗口
+python run.py --desktop
 ```
 
 GUI 界面提供：
