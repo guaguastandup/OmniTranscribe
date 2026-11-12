@@ -5,6 +5,45 @@ All notable changes to OmniTranscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-13
+
+### Added
+- Resumable product workflow: SQLite project store, chunked transcription and
+  translation with checkpoints, in-app subtitle proofreading table
+  (`src/resumable_pipeline.py`, `src/project_store.py`, `src/product_gui.py`)
+- Desktop packaging: PyInstaller spec, Windows installer and macOS DMG
+  release workflow, native window via pywebview (`run.py --desktop`)
+- API key storage with OS keyring support and a permission-restricted file
+  fallback (`src/app_settings.py`)
+- ruff lint configuration and CI enforcement; unit tests for the converter,
+  cache, config and translator helpers (32 tests total)
+
+### Fixed
+- `--language auto` no longer crashes Whisper ("auto" now maps to None for
+  auto-detection); batch mode no longer silently transcribes everything as
+  Japanese or translates to Chinese regardless of the requested languages
+- Translation providers: Claude and Gemini now use their documented
+  OpenAI-compatible endpoints; `--fast/--quality/--gpu` presets, and
+  `--subtitle-fontsize/--subtitle-position`, and the `WHISPER_*` /
+  `TRANSLATION_MODEL` `.env` variables now actually take effect
+- `--target-language none` works end to end (format conversion, video and
+  MP3 exports fall back to the original subtitles)
+- Replaced `eval()` on ffprobe output and deprecated `tempfile.mktemp()`;
+  bare `except:` clauses removed; translation requests get a timeout
+  (`TRANSLATION_TIMEOUT`, default 120s)
+
+### Changed
+- Product GUI visual refresh: gradient hero, semantic stage pills, progress
+  bars, themed buttons and tabs
+- Whisper models are cached per (model, device) so resuming a project no
+  longer reloads the model; transcription cache hashes each file once
+- Removed ~240 lines of dead Japanese-strict fallback code from
+  `src/transcribe.py`; README banner compressed from 5.5MB to 67KB
+
+### Compliance
+- Bundled ChillType fonts documented and shipped with their SIL OFL 1.1
+  license text (`FONTS.md`, `OFL-1.1.txt`)
+
 ## [2.0.0] - 2025-02-17
 
 ### Major Changes

@@ -397,6 +397,7 @@ RuntimeError: CUDA out of memory
 - [OpenAI Whisper](https://github.com/openai/whisper) - 多语言语音识别
 - [FFmpeg](https://ffmpeg.org/) - 媒体处理
 - 所有翻译服务提供商（DeepSeek、Google、阿里、Anthropic、OpenAI）
+- [寒蝉字体系列](https://github.com/Warren2060)（ChillDuanSans / ChillHuoFangSong，[OFL 1.1](./FONTS.md)）- 内置字幕字体
 
 ---
 

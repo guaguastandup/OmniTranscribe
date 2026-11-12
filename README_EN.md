@@ -393,6 +393,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [OpenAI Whisper](https://github.com/openai/whisper) for multilingual speech recognition
 - [FFmpeg](https://ffmpeg.org/) for media processing
 - All translation service providers (DeepSeek, Google, Alibaba, Anthropic, OpenAI)
+- [ChillType fonts](https://github.com/Warren2060) (ChillDuanSans / ChillHuoFangSong, [OFL 1.1](./FONTS.md)) for the bundled subtitle fonts
 
 ---
 
