@@ -55,6 +55,19 @@ STAGE_LABELS = {
     "ready_to_export": "可导出",
     "exported": "已导出",
 }
+# Semantic color tone per stage (drives the summary card's stage pill)
+STAGE_TONES = {
+    "imported": "tone-idle",
+    "transcribing": "tone-run",
+    "transcription_paused": "tone-pause",
+    "transcribed": "tone-ok",
+    "editing": "tone-ok",
+    "translating": "tone-run",
+    "translation_paused": "tone-pause",
+    "translated": "tone-ok",
+    "ready_to_export": "tone-ok",
+    "exported": "tone-done",
+}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".wmv", ".flv", ".webm", ".m4v"}
 
 
@@ -66,6 +79,7 @@ class ProductGUI:
         self.store = ProjectStore()
         self.pipeline = ResumablePipeline(self.store)
         self.stop_flags: Dict[Tuple[str, str], threading.Event] = {}
+        self.theme = gr.themes.Soft(primary_hue="indigo", neutral_hue="slate", radius_size="lg")
 
     def _flag(self, project_id: str, task: str) -> threading.Event:
         key = (project_id, task)
@@ -84,7 +98,7 @@ class ProductGUI:
 
     def _summary(self, project_id: Optional[str]) -> str:
         if not project_id:
-            return "<div class='empty-state'>创建或打开一个项目后，这里会显示处理进度。</div>"
+            return "<div class='empty-state'>👋 创建或打开一个项目后，这里会显示处理进度。</div>"
         project = self.store.get_project(project_id)
         transcribe = self.store.get_checkpoint(project_id, "transcription")
         translate = self.store.get_checkpoint(project_id, "translation")
@@ -94,6 +108,13 @@ class ProductGUI:
             done = int(checkpoint.get("completed_units", 0) or 0)
             return "尚未开始" if not total else f"{done}/{total}"
 
+        def progress_bar(checkpoint):
+            total = int(checkpoint.get("total_units", 0) or 0)
+            done = int(checkpoint.get("completed_units", 0) or 0)
+            ratio = 0 if not total else min(1.0, done / total)
+            return f"<div class='bar'><i style='width:{int(ratio * 100)}%'></i></div>"
+
+        tone = STAGE_TONES.get(project.stage, "tone-idle")
         stage = html.escape(STAGE_LABELS.get(project.stage, project.stage))
         name = html.escape(project.name)
         source = html.escape(Path(project.source_path).name)
@@ -101,13 +122,13 @@ class ProductGUI:
         <div class="project-card">
           <div class="project-card-top">
             <div><div class="eyebrow">当前项目</div><h2>{name}</h2></div>
-            <span class="stage-pill">{stage}</span>
+            <span class="stage-pill {tone}">{stage}</span>
           </div>
           <div class="meta-grid">
-            <div><span>源文件</span><strong>{source}</strong></div>
-            <div><span>转录</span><strong>{progress_text(transcribe)}</strong></div>
-            <div><span>翻译</span><strong>{progress_text(translate)}</strong></div>
-            <div><span>字幕</span><strong>{len(self.store.list_segments(project_id))} 条</strong></div>
+            <div><span>🎬 源文件</span><strong title="{source}">{source}</strong></div>
+            <div><span>🎧 转录</span><strong>{progress_text(transcribe)}</strong>{progress_bar(transcribe)}</div>
+            <div><span>🌐 翻译</span><strong>{progress_text(translate)}</strong>{progress_bar(translate)}</div>
+            <div><span>💬 字幕</span><strong>{len(self.store.list_segments(project_id))} 条</strong></div>
           </div>
         </div>
         """
@@ -276,23 +297,100 @@ class ProductGUI:
 
     def _css(self) -> str:
         return """
-        .gradio-container { max-width: 1380px !important; margin: 0 auto !important; }
-        .hero { padding: 12px 4px 18px; }
-        .hero h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.03em; }
-        .hero p { margin: 0; opacity: .68; }
-        .project-card { border: 1px solid rgba(120,120,120,.18); border-radius: 20px; padding: 20px; margin: 6px 0 14px; background: rgba(127,127,127,.045); }
-        .project-card-top { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
+        /* ---------- Layout & typography ---------- */
+        .gradio-container {
+            max-width: 1400px !important; margin: 0 auto !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif !important;
+        }
+
+        /* ---------- Hero banner ---------- */
+        .ot-hero {
+            position: relative; overflow: hidden; border-radius: 22px;
+            padding: 26px 30px 24px; margin: 4px 0 18px; color: #fff;
+            background: linear-gradient(120deg, #312e81 0%, #4f46e5 48%, #7c3aed 100%);
+            box-shadow: 0 10px 30px -12px rgba(79, 70, 229, .45);
+        }
+        .ot-hero::after {
+            content: ""; position: absolute; right: -70px; top: -90px;
+            width: 250px; height: 250px; border-radius: 999px; background: rgba(255,255,255,.09);
+        }
+        .ot-hero::before {
+            content: ""; position: absolute; right: 90px; bottom: -130px;
+            width: 200px; height: 200px; border-radius: 999px; background: rgba(255,255,255,.06);
+        }
+        .ot-hero h1 { font-size: 30px; font-weight: 800; margin: 0 0 6px; letter-spacing: -.02em; color: #fff; }
+        .ot-hero p { margin: 0; font-size: 15px; opacity: .88; }
+        .ot-steps {
+            display: inline-block; margin-top: 14px; padding: 6px 14px;
+            border-radius: 999px; background: rgba(255,255,255,.15);
+            font-size: 12.5px; letter-spacing: .02em;
+        }
+
+        /* ---------- Project summary card ---------- */
+        .project-card {
+            border: 1px solid rgba(120,120,120,.18); border-radius: 20px;
+            padding: 20px 22px; margin: 6px 0 14px; background: rgba(127,127,127,.045);
+        }
+        .project-card-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
         .project-card h2 { margin: 3px 0 0; font-size: 22px; }
         .eyebrow { font-size: 12px; opacity: .55; text-transform: uppercase; letter-spacing: .08em; }
-        .stage-pill { border-radius: 999px; padding: 7px 11px; background: rgba(80,120,255,.12); font-size: 13px; }
-        .meta-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:18px; }
-        .meta-grid div { padding: 12px; border-radius: 14px; background: rgba(127,127,127,.06); min-width:0; }
-        .meta-grid span { display:block; font-size:12px; opacity:.55; margin-bottom:4px; }
-        .meta-grid strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .empty-state { padding:20px; border:1px dashed rgba(120,120,120,.3); border-radius:18px; opacity:.7; }
-        .primary-action button { min-height: 48px !important; font-weight: 650 !important; }
-        footer { display:none !important; }
-        @media (max-width: 760px) { .meta-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+        .stage-pill {
+            border-radius: 999px; padding: 7px 13px; font-size: 13px;
+            font-weight: 600; white-space: nowrap;
+        }
+        .tone-idle  { background: rgba(127,127,127,.16); }
+        .tone-run   { background: rgba(59,130,246,.16);  color: #3b82f6; animation: ot-pulse 1.6s ease-in-out infinite; }
+        .tone-pause { background: rgba(245,158,11,.18);  color: #d97706; }
+        .tone-ok    { background: rgba(16,185,129,.15);  color: #059669; }
+        .tone-done  { background: rgba(16,185,129,.24);  color: #047857; }
+        @keyframes ot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+        .meta-grid {
+            display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+            gap: 10px; margin-top: 16px;
+        }
+        .meta-grid div {
+            padding: 12px 14px; border-radius: 14px; min-width: 0;
+            background: rgba(127,127,127,.06);
+            border-left: 3px solid rgba(99,102,241,.55);
+        }
+        .meta-grid span { display: block; font-size: 12px; opacity: .55; margin-bottom: 4px; }
+        .meta-grid strong {
+            display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .bar {
+            margin-top: 8px; height: 5px; border-radius: 999px;
+            background: rgba(127,127,127,.18); overflow: hidden;
+        }
+        .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6366f1, #22c55e); }
+
+        .empty-state {
+            padding: 22px; border: 1.5px dashed rgba(120,120,120,.35);
+            border-radius: 18px; opacity: .78; text-align: center;
+        }
+
+        /* ---------- Tabs & buttons ---------- */
+        .tab-nav { border-bottom: none !important; gap: 4px; }
+        .tab-nav button { border-radius: 12px !important; padding: 8px 14px !important; font-weight: 550; white-space: nowrap; }
+        .tab-nav button.selected { box-shadow: inset 0 -2px 0 0 #6366f1; }
+
+        .primary-action, .primary-action button {
+            min-height: 48px !important; font-weight: 700 !important; border-radius: 14px !important;
+        }
+
+        /* ---------- Status & editor ---------- */
+        .ot-status { border-radius: 14px !important; }
+        .ot-status textarea { font-variant-numeric: tabular-nums; }
+        .ot-editor { font-size: 13px !important; }
+
+        footer { display: none !important; }
+
+        @media (max-width: 760px) {
+            .meta-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+            .ot-hero h1 { font-size: 26px; }
+        }
         """
 
     def _gradio_major(self) -> int:
@@ -304,10 +402,16 @@ class ProductGUI:
     def build(self):
         block_kwargs = {"title": "OmniTranscribe"}
         if self._gradio_major() < 6:
-            block_kwargs.update(theme=gr.themes.Soft(), css=self._css())
+            block_kwargs.update(theme=self.theme, css=self._css())
         with gr.Blocks(**block_kwargs) as app:
             project_state = gr.State(None)
-            gr.HTML("<div class='hero'><h1>OmniTranscribe</h1><p>转录、校对、翻译，再导出。每一步都会自动保存。</p></div>")
+            gr.HTML("""
+            <div class='ot-hero'>
+              <h1>OmniTranscribe</h1>
+              <p>转录 · 校对 · 翻译 · 导出 —— 每一步自动保存，随时可续。</p>
+              <div class='ot-steps'>① 导入 → ② 转录 → ③ 校对 → ④ 翻译 → ⑤ 导出</div>
+            </div>
+            """)
 
             with gr.Row(equal_height=True):
                 with gr.Column(scale=3):
@@ -316,7 +420,7 @@ class ProductGUI:
                     open_btn = gr.Button("打开项目", size="lg")
 
             project_summary = gr.HTML(self._summary(None))
-            status = gr.Textbox(label="状态", interactive=False, lines=2)
+            status = gr.Textbox(label="状态", interactive=False, lines=2, elem_classes=["ot-status"])
 
             with gr.Tabs():
                 with gr.Tab("① 导入"):
@@ -343,7 +447,7 @@ class ProductGUI:
                     gr.Markdown("转录按时间块自动保存。关闭软件或暂停后，再次点击即可从未完成的块继续。")
                     chunk_minutes = gr.Slider(1, 15, value=5, step=1, label="Checkpoint 间隔（分钟）")
                     with gr.Row():
-                        transcribe_btn = gr.Button("开始 / 继续转录", variant="primary")
+                        transcribe_btn = gr.Button("开始 / 继续转录", variant="primary", elem_classes=["primary-action"])
                         pause_transcribe_btn = gr.Button("安全暂停")
 
                 with gr.Tab("③ 字幕校对"):
@@ -358,6 +462,7 @@ class ProductGUI:
                         "wrap": True,
                         "row_count": 8,
                         "label": "字幕工作台",
+                        "elem_classes": ["ot-editor"],
                     }
                     parameters = inspect.signature(gr.Dataframe).parameters
                     if "column_count" in parameters:
@@ -365,12 +470,12 @@ class ProductGUI:
                     else:
                         dataframe_kwargs["col_count"] = (6, "fixed")
                     editor = gr.Dataframe(**dataframe_kwargs)
-                    save_editor_btn = gr.Button("保存字幕修改", variant="primary")
+                    save_editor_btn = gr.Button("保存字幕修改", variant="primary", elem_classes=["primary-action"])
 
                 with gr.Tab("④ 翻译"):
                     gr.Markdown("只翻译尚未翻译或因原文校对而失效的字幕；已经人工校对的译文默认跳过。")
                     with gr.Row():
-                        translate_btn = gr.Button("开始 / 继续翻译", variant="primary")
+                        translate_btn = gr.Button("开始 / 继续翻译", variant="primary", elem_classes=["primary-action"])
                         pause_translate_btn = gr.Button("安全暂停")
 
                 with gr.Tab("⑤ 导出"):
@@ -384,7 +489,7 @@ class ProductGUI:
                             title = gr.Textbox(label="标题")
                             artist = gr.Textbox(label="艺术家")
                             album = gr.Textbox(label="专辑")
-                    export_btn = gr.Button("导出", variant="primary")
+                    export_btn = gr.Button("导出", variant="primary", elem_classes=["primary-action"])
                     exported_file = gr.File(label="导出文件")
 
                 with gr.Tab("⚙ 设置"):
@@ -396,7 +501,7 @@ class ProductGUI:
                         qwen_key = gr.Textbox(label="Qwen API Key", type="password")
                         claude_key = gr.Textbox(label="Claude API Key", type="password")
                     openai_key = gr.Textbox(label="OpenAI API Key", type="password")
-                    save_api_btn = gr.Button("保存 API 设置", variant="primary")
+                    save_api_btn = gr.Button("保存 API 设置", variant="primary", elem_classes=["primary-action"])
 
             create_btn.click(
                 self.create_project,
@@ -436,7 +541,7 @@ class ProductGUI:
     def _launch_options(self):
         options = {"show_error": True}
         if self._gradio_major() >= 6:
-            options.update(theme=gr.themes.Soft(), css=self._css())
+            options.update(theme=self.theme, css=self._css())
         return options
 
     def launch(self, share: bool = False):
