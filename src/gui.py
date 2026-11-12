@@ -11,11 +11,8 @@ A user-friendly web interface for OmniTranscribe that allows users to:
 """
 
 import gradio as gr
-import os
-import sys
 from pathlib import Path
-from typing import Optional, Tuple, List
-import shutil
+from typing import Optional, Tuple
 
 # Load environment variables from .env file
 try:
@@ -138,7 +135,6 @@ class OmniTranscribeGUI:
                 return None, None, f"❌ 文件不存在: {media_file}", None
 
             base_name = media_path.stem
-            output_base = self.output_dir / base_name
 
             progress(0.1, desc="初始化中...")
 
@@ -374,13 +370,13 @@ class OmniTranscribeGUI:
                             sources=["upload", "clipboard"]
                         )
                         with gr.Row():
-                            subtitle_position = gr.Radio(
+                            gr.Radio(
                                 choices=["top", "bottom", "center"],
                                 value="bottom",
                                 label="字幕位置",
                                 scale=1
                             )
-                            subtitle_fontsize = gr.Slider(
+                            gr.Slider(
                                 minimum=24,
                                 maximum=72,
                                 value=48,

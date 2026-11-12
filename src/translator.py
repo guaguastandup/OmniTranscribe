@@ -1,10 +1,14 @@
-import openai
 import os
 import time
 import re
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict
-from dotenv import load_dotenv
+from typing import Optional, List, Dict
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # optional dependency; fall back to system env vars
+    def load_dotenv(*args, **kwargs):
+        return False
 
 # Google Translate support (free, no API key required)
 try:
@@ -176,6 +180,7 @@ class UniversalTranslator:
             self.api_key = api_key or os.getenv('TRANSLATION_API_KEY')
             configured_url = base_url or os.getenv('TRANSLATION_URL')
             self.actual_model_name = model  # Use the provided model name directly
+            import openai  # deferred so pure helpers stay importable without the SDK
             self.client = openai.OpenAI(api_key=self.api_key, base_url=configured_url, timeout=DEFAULT_TIMEOUT)
         elif self.service == "google":
             # Google Translate doesn't need API key or OpenAI client
@@ -199,6 +204,7 @@ class UniversalTranslator:
             self.actual_model_name = os.getenv(service_config["model_env"]) or service_config["default_model"]
 
             # Configure OpenAI client
+            import openai  # deferred so pure helpers stay importable without the SDK
             self.client = openai.OpenAI(
                 api_key=self.api_key,
                 base_url=configured_url,
@@ -688,10 +694,10 @@ def example_usage():
     deepseek_translator = UniversalTranslator(api_key="your_deepseek_api_key", model="deepseek-chat")
 
     # Example 2: Using Gemini Flash
-    gemini_translator = UniversalTranslator.create_translator("gemini", api_key="your_gemini_api_key")
+    UniversalTranslator.create_translator("gemini", api_key="your_gemini_api_key")
 
     # Example 3: Using Qwen Max with custom URL
-    qwen_translator = UniversalTranslator.create_translator(
+    UniversalTranslator.create_translator(
         "qwen-max",
         api_key="your_qwen_api_key",
         base_url="https://custom-qwen-endpoint.com/v1"
@@ -705,7 +711,7 @@ def example_usage():
     print(f"Model info: {model_info}")
 
     # Example 6: Using custom model
-    custom_translator = UniversalTranslator.create_translator(
+    UniversalTranslator.create_translator(
         "custom",
         api_key="your_custom_api_key",
         base_url="https://your-custom-endpoint.com/v1"

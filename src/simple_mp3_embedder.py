@@ -11,7 +11,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional, Dict
-import shutil
 
 # PIL is used for cover image conversion; the app degrades gracefully without it
 try:
@@ -156,7 +155,7 @@ class SimpleMP3Embedder:
 
         try:
             print(f"Running FFmpeg command: {' '.join(full_cmd)}")
-            result = subprocess.run(full_cmd, capture_output=True, text=True, check=True)
+            subprocess.run(full_cmd, capture_output=True, text=True, check=True)
 
             # Clean up temporary files
             if hasattr(self, '_temp_files'):

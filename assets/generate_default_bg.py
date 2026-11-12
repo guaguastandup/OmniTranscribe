@@ -31,7 +31,7 @@ for i in range(5):
 try:
     # Try to use a nice font
     font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 80)
-except:
+except OSError:
     font = ImageFont.load_default()
 
 text = "OmniTranscribe"

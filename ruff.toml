@@ -1,0 +1,15 @@
+# Ruff lint configuration for OmniTranscribe.
+# Conservative default rule set (pyflakes + core pycodestyle errors):
+# catches unused imports/variables, undefined names, and syntax-level issues
+# without imposing a formatting churn on the existing codebase.
+
+target-version = "py38"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Both deliberately import after mutating sys.path / defining constants first
+"desktop_entry.py" = ["E402"]
+"src/resumable_pipeline.py" = ["E402"]
