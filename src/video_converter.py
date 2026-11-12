@@ -6,8 +6,6 @@ This module handles conversion of video files (MP4, AVI, MOV, etc.) to audio for
 that can be processed by the transcription engine.
 """
 
-import os
-import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
 import ffmpeg

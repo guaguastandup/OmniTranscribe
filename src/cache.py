@@ -7,7 +7,6 @@ based on file hash and Whisper model size to avoid re-transcribing
 the same audio files.
 """
 
-import os
 import json
 import hashlib
 from pathlib import Path

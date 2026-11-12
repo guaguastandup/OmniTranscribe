@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Optional, Callable
 # from concurrent.futures import ThreadPoolExecutor, as_completed  # No longer needed for sequential processing
-import time
 
 from transcribe import AudioTranscriber
 from translator import UniversalTranslator, get_prompt_path

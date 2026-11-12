@@ -11,7 +11,6 @@ Supports conversion between:
 import re
 import os
 from typing import List, Tuple
-from datetime import timedelta
 
 class SubtitleConverter:
     def __init__(self):

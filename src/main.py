@@ -76,7 +76,7 @@ from video_converter import VideoConverter
 from final_video_generator import FinalVideoGenerator
 from batch_processor import BatchProcessor
 from simple_mp3_embedder import SimpleMP3Embedder
-from config import get_config, save_config
+from config import get_config
 from interactive import run_interactive
 
 # Import cache module
@@ -764,7 +764,7 @@ def main():
                     subtitle_position=args.subtitle_position
                 )
 
-                print(f"Video generation completed successfully!")
+                print("Video generation completed successfully!")
                 print(f"Output video: {result_path}")
 
             except Exception as e:
@@ -809,7 +809,7 @@ def main():
                     output_path=str(mp3_output_path)
                 )
 
-                print(f"MP3 metadata embedding completed successfully!")
+                print("MP3 metadata embedding completed successfully!")
                 print(f"Output MP3: {result_path}")
 
                 # Show embedded metadata info

@@ -9,7 +9,6 @@ through the transcription process without needing to remember complex commands.
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 # Try to import inquirer, but provide fallback if not available
 try:
@@ -18,7 +17,7 @@ try:
 except ImportError:
     INQUIRER_AVAILABLE = False
 
-from config import get_config, save_config
+from config import get_config
 
 class InteractiveMode:
     """Interactive mode for user-friendly operation."""
@@ -328,7 +327,7 @@ class InteractiveMode:
             if subtitle_only:
                 subtitle_extensions = {'.srt', '.vtt', '.lrc'}
                 if Path(file_path).suffix.lower() not in subtitle_extensions:
-                    print(f"❌ Please select a subtitle file (SRT, VTT, or LRC)")
+                    print("❌ Please select a subtitle file (SRT, VTT, or LRC)")
                     continue
 
             return file_path

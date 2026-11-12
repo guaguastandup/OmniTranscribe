@@ -12,12 +12,11 @@ Uses direct FFmpeg commands with proper subtitle rendering.
 """
 
 import os
-import re
 import subprocess
 import tempfile
 import platform
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import Optional
 from converter import SubtitleConverter
 
 
