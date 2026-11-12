@@ -15,6 +15,11 @@ except ImportError:
     print("Warning: deep-translator not available. Install with: pip install deep-translator")
 
 
+# Per-request timeout (seconds); prevents a hung API call from blocking the
+# whole pipeline forever. Override with the TRANSLATION_TIMEOUT env var.
+DEFAULT_TIMEOUT = float(os.getenv("TRANSLATION_TIMEOUT", "120"))
+
+
 # Language code to name mapping
 LANGUAGE_NAMES = {
     "zh": "中文",
@@ -101,7 +106,8 @@ class UniversalTranslator:
             },
             "gemini": {
                 "env_key": "GEMINI_API_KEY",
-                "default_url": "https://generativelanguage.googleapis.com/v1beta",
+                # Google's documented OpenAI-compatible endpoint
+                "default_url": "https://generativelanguage.googleapis.com/v1beta/openai",
                 "model_env": "GEMINI_MODEL",
                 "default_model": "gemini-2.5-flash"
             },
@@ -113,9 +119,10 @@ class UniversalTranslator:
             },
             "claude": {
                 "env_key": "ANTHROPIC_API_KEY",
-                "default_url": "https://api.anthropic.com",
+                # Anthropic's documented OpenAI-compatible endpoint
+                "default_url": "https://api.anthropic.com/v1",
                 "model_env": "CLAUDE_MODEL",
-                "default_model": "claude-3-sonnet-20240229"
+                "default_model": "claude-3-5-sonnet-20241022"
             },
             "gpt": {
                 "env_key": "OPENAI_API_KEY",
@@ -169,7 +176,7 @@ class UniversalTranslator:
             self.api_key = api_key or os.getenv('TRANSLATION_API_KEY')
             configured_url = base_url or os.getenv('TRANSLATION_URL')
             self.actual_model_name = model  # Use the provided model name directly
-            self.client = openai.OpenAI(api_key=self.api_key, base_url=configured_url)
+            self.client = openai.OpenAI(api_key=self.api_key, base_url=configured_url, timeout=DEFAULT_TIMEOUT)
         elif self.service == "google":
             # Google Translate doesn't need API key or OpenAI client
             self.api_key = None
@@ -194,7 +201,8 @@ class UniversalTranslator:
             # Configure OpenAI client
             self.client = openai.OpenAI(
                 api_key=self.api_key,
-                base_url=configured_url
+                base_url=configured_url,
+                timeout=DEFAULT_TIMEOUT
             )
 
     def load_prompt(self, prompt_path: str = "prompt.md") -> str:
@@ -246,17 +254,18 @@ class UniversalTranslator:
 
         translated_chunks = []
 
+        # Track the running subtitle offset so each chunk keeps global numbering
+        # (parsing each chunk once instead of re-parsing chunks[:i] every iteration)
+        start_index = 0
         for i, chunk in enumerate(chunks, 1):
             print(f"Translating chunk {i}/{len(chunks)}...")
-
-            # Get the starting index for this chunk to maintain numbering
-            start_index = sum(len(self._parse_srt_content(c)) for c in chunks[:i])
 
             translated_chunk = self._translate_chunk(
                 chunk, system_prompt, max_retries, start_index, target_language
             )
 
             translated_chunks.append(translated_chunk)
+            start_index += len(self._parse_srt_content(chunk))
 
             # Add a small delay between chunks to avoid rate limiting (reduced from 1s to 0.1s)
             if i < len(chunks):
@@ -425,7 +434,7 @@ class UniversalTranslator:
                 translated_content = response.choices[0].message.content
 
                 if not translated_content:
-                    raise ValueError("Empty response from DeepSeek API")
+                    raise ValueError(f"Empty response from {self.actual_model_name} API")
 
                 # Clean the response to remove any markdown formatting
                 cleaned_content = self._clean_srt_content(translated_content)
@@ -439,7 +448,7 @@ class UniversalTranslator:
                     print(f"Retrying chunk in {wait_time} seconds...")
                     time.sleep(wait_time)
                 else:
-                    raise Exception(f"Chunk translation failed after {max_retries} attempts: {str(e)}")
+                    raise RuntimeError(f"Chunk translation failed after {max_retries} attempts: {str(e)}")
 
     def _combine_translated_chunks(self, translated_chunks: List[str]) -> str:
         """
@@ -594,8 +603,8 @@ class UniversalTranslator:
                 "name": "Google Gemini",
                 "env_key": "GEMINI_API_KEY",
                 "model_env": "GEMINI_MODEL",
-                "default_url": "https://generativelanguage.googleapis.com/v1beta",
-                "default_model": "gemini-1.5-flash",
+                "default_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                "default_model": "gemini-2.5-flash",
                 "description": "Google's Gemini AI service"
             },
             "qwen": {
@@ -610,8 +619,8 @@ class UniversalTranslator:
                 "name": "Anthropic Claude",
                 "env_key": "ANTHROPIC_API_KEY",
                 "model_env": "CLAUDE_MODEL",
-                "default_url": "https://api.anthropic.com",
-                "default_model": "claude-3-sonnet-20240229",
+                "default_url": "https://api.anthropic.com/v1",
+                "default_model": "claude-3-5-sonnet-20241022",
                 "description": "Anthropic's Claude AI service"
             },
             "gpt": {

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Configuration management for TranscribeX audio transcription tool.
+Configuration management for OmniTranscribe.
 
 This module handles loading, saving, and managing user preferences
 to reduce the need for repetitive command line arguments.
 """
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -72,7 +73,9 @@ class Config:
             except Exception as e:
                 print(f"Warning: Failed to load config file, using defaults: {e}")
 
-        return self.DEFAULT_CONFIG.copy()
+        # Deep copy: a shallow copy would share the nested dicts with the
+        # class-level DEFAULT_CONFIG, so set() would leak into the defaults.
+        return copy.deepcopy(self.DEFAULT_CONFIG)
 
     def _deep_merge(self, default: Dict, loaded: Dict) -> Dict:
         """Deep merge two dictionaries, preserving defaults."""
@@ -135,7 +138,7 @@ class Config:
 
     def reset_to_defaults(self):
         """Reset configuration to defaults."""
-        self.config = self.DEFAULT_CONFIG.copy()
+        self.config = copy.deepcopy(self.DEFAULT_CONFIG)
         self.save()
 
     def print_config(self):

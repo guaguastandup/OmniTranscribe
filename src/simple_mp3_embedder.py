@@ -13,29 +13,11 @@ from pathlib import Path
 from typing import Optional, Dict
 import shutil
 
-# PIL import with fallback
+# PIL is used for cover image conversion; the app degrades gracefully without it
 try:
     from PIL import Image
 except ImportError:
-    # Try to import from site-packages
-    import sys
-    import os
-    site_packages = None
-
-    # Try common site-packages locations
-    for path in sys.path:
-        if 'site-packages' in path and os.path.exists(path):
-            site_packages = path
-            break
-
-    if site_packages:
-        sys.path.insert(0, site_packages)
-        try:
-            from PIL import Image
-        except ImportError:
-            Image = None
-    else:
-        Image = None
+    Image = None
 
 
 class SimpleMP3Embedder:
@@ -181,7 +163,7 @@ class SimpleMP3Embedder:
                 for temp_file in self._temp_files:
                     try:
                         os.unlink(temp_file)
-                    except:
+                    except OSError:
                         pass
                 self._temp_files = []
 
@@ -189,7 +171,7 @@ class SimpleMP3Embedder:
                 print(f"Successfully embedded metadata: {output_path}")
                 return output_path
             else:
-                raise Exception("Output file was not created")
+                raise RuntimeError("Output file was not created")
 
         except subprocess.CalledProcessError as e:
             # Clean up temporary files even on error
@@ -197,10 +179,10 @@ class SimpleMP3Embedder:
                 for temp_file in self._temp_files:
                     try:
                         os.unlink(temp_file)
-                    except:
+                    except OSError:
                         pass
                 self._temp_files = []
-            raise Exception(f"FFmpeg failed: {e.stderr}")
+            raise RuntimeError(f"FFmpeg failed: {e.stderr}")
 
     def _process_lyrics_file(self, lyrics_path: str) -> Optional[str]:
         """Process lyrics file and return text content."""

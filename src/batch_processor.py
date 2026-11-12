@@ -26,6 +26,8 @@ class BatchProcessor:
     def __init__(self,
                  model_size: str = "base",
                  device: str = "auto",
+                 language: str = "auto",
+                 target_language: str = "zh",
                  deepseek_model: str = "deepseek-chat",
                  chunk_size: int = 20,
                  prompt_file: str = "prompt.md",
@@ -41,10 +43,12 @@ class BatchProcessor:
         Args:
             model_size: Whisper model size
             device: Device for Whisper inference (auto, cpu, cuda, mps)
-            deepseek_model: DeepSeek model for translation
+            language: Source language code for transcription ('auto' for auto-detection)
+            target_language: Target language code for translation ('none' to skip translation)
+            deepseek_model: Translation model/service to use
             chunk_size: Number of subtitle entries per translation chunk
             prompt_file: Path to translation prompt file
-            max_workers: Maximum number of parallel workers
+            max_workers: Maximum number of parallel workers (currently unused; processing is sequential)
             generate_video: Whether to generate MP4 videos with subtitles
             background_image: Path to background image for video generation
             subtitle_position: Position of subtitles in video (top, bottom, center)
@@ -56,6 +60,8 @@ class BatchProcessor:
         self.converter = SubtitleConverter()
         self.video_converter = VideoConverter()
 
+        self.language = language
+        self.target_language = target_language
         self.translation_model = deepseek_model
         self.chunk_size = chunk_size
         self.prompt_file = get_prompt_path(prompt_file)
@@ -149,7 +155,11 @@ class BatchProcessor:
         }
 
         # Check if files already exist
-        if skip_existing and original_srt_path.exists() and translated_srt_path.exists():
+        skip_translation = self.target_language == 'none'
+        outputs_exist = original_srt_path.exists() and (
+            skip_translation or translated_srt_path.exists()
+        )
+        if skip_existing and outputs_exist:
             result['status'] = 'already_exists'
             return result
 
@@ -171,34 +181,40 @@ class BatchProcessor:
 
             # Step 2: Transcribe audio
             print(f"[{file_path.name}] Transcribing audio...")
-            srt_content = self.transcriber.transcribe_audio(current_audio_path)
+            srt_content = self.transcriber.transcribe_audio(
+                current_audio_path, language=self.language
+            )
             self.transcriber.save_srt(srt_content, str(original_srt_path))
 
-            # Step 3: Translate subtitles
-            print(f"[{file_path.name}] Translating subtitles...")
-            translated_content = self.translator.translate_srt(
-                srt_content,
-                prompt_path=self.prompt_file,
-                chunk_size=self.chunk_size
-            )
-            self.translator.save_translated_srt(translated_content, str(translated_srt_path))
+            # Step 3: Translate subtitles (unless translation is disabled)
+            if skip_translation:
+                print(f"[{file_path.name}] Skipping translation (--target-language none)")
+            else:
+                print(f"[{file_path.name}] Translating subtitles to {self.target_language}...")
+                translated_content = self.translator.translate_srt(
+                    srt_content,
+                    prompt_path=self.prompt_file,
+                    chunk_size=self.chunk_size,
+                    target_language=self.target_language
+                )
+                self.translator.save_translated_srt(translated_content, str(translated_srt_path))
 
             # Step 4: Convert subtitle format if requested
             if convert_to and convert_to != 'srt':
                 print(f"[{file_path.name}] Converting subtitle format to {convert_to}...")
 
                 # Convert original subtitles
-                if convert_to != 'srt':
-                    converted_original = self.converter.convert_file(
-                        str(original_srt_path), convert_to
-                    )
-                    result[f'original_{convert_to}'] = converted_original
+                converted_original = self.converter.convert_file(
+                    str(original_srt_path), convert_to
+                )
+                result[f'original_{convert_to}'] = converted_original
 
                 # Convert translated subtitles
-                converted_translated = self.converter.convert_file(
-                    str(translated_srt_path), convert_to
-                )
-                result[f'translated_{convert_to}'] = converted_translated
+                if not skip_translation:
+                    converted_translated = self.converter.convert_file(
+                        str(translated_srt_path), convert_to
+                    )
+                    result[f'translated_{convert_to}'] = converted_translated
 
             # Step 5: Generate video if requested
             if self.generate_video:
@@ -207,9 +223,9 @@ class BatchProcessor:
 
                 print(f"[{file_path.name}] Generating MP4 video...")
 
-                # Convert translated SRT to LRC for video
-                # convert_file returns the actual output path
-                lyrics_file = self.converter.convert_file(str(translated_srt_path), 'lrc')
+                # Convert subtitles to LRC for video (fall back to original when translation is skipped)
+                lyrics_source = translated_srt_path if not skip_translation else original_srt_path
+                lyrics_file = self.converter.convert_file(str(lyrics_source), 'lrc')
 
                 # Generate output path for video
                 video_output_path = file_output_dir / f"{base_name}_video.mp4"
@@ -220,7 +236,9 @@ class BatchProcessor:
                     audio_path=current_audio_path,
                     lyrics_path=lyrics_file,
                     image_path=self.background_image,
-                    output_path=str(video_output_path)
+                    output_path=str(video_output_path),
+                    font_size=self.subtitle_fontsize,
+                    subtitle_position=self.subtitle_position
                 )
 
                 result['video_file'] = result_video_path
@@ -231,7 +249,7 @@ class BatchProcessor:
             if 'converted_audio' in result and not keep_video_files:
                 try:
                     os.unlink(result['converted_audio'])
-                except:
+                except OSError:
                     pass
 
         except Exception as e:
@@ -373,6 +391,18 @@ def main():
         help="Device for Whisper inference (auto, cpu, cuda, mps). Auto detects GPU if available (default: auto)"
     )
     parser.add_argument(
+        "--language",
+        "-l",
+        default="auto",
+        help="Source language code for transcription (default: auto for auto-detection)"
+    )
+    parser.add_argument(
+        "--target-language",
+        "-t",
+        default="zh",
+        help="Target language for translation (default: zh). Use 'none' to skip translation"
+    )
+    parser.add_argument(
         "--deepseek-model",
         default="deepseek-chat",
         help="DeepSeek model for translation (default: deepseek-chat)"
@@ -430,6 +460,8 @@ def main():
     processor = BatchProcessor(
         model_size=args.model,
         device=args.device,
+        language=args.language,
+        target_language=args.target_language,
         deepseek_model=args.deepseek_model,
         chunk_size=args.chunk_size,
         prompt_file=args.prompt_file,

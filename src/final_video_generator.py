@@ -156,7 +156,9 @@ class FinalVideoGenerator:
                                    srt_path: str,
                                    image_path: str,
                                    output_path: str,
-                                   max_duration: Optional[float] = None) -> str:
+                                   max_duration: Optional[float] = None,
+                                   font_size: int = 28,
+                                   subtitle_position: str = "bottom") -> str:
         """
         Create MP4 video with synchronized subtitles.
 
@@ -166,10 +168,14 @@ class FinalVideoGenerator:
             image_path: Path to background image file
             output_path: Path for output MP4 file
             max_duration: Maximum duration (None for full audio)
+            font_size: Subtitle font size (libass FontSize)
+            subtitle_position: Subtitle position (top, bottom, center)
 
         Returns:
             Path to generated MP4 file
         """
+        # libass numpad alignment: 8=top-center, 5=middle-center, 2=bottom-center
+        alignment = {"top": 8, "center": 5, "bottom": 2}.get(subtitle_position, 2)
         # Validate input files
         for file_path, file_type in [(audio_path, "Audio"), (srt_path, "Subtitle"), (image_path, "Image")]:
             if not os.path.exists(file_path):
@@ -193,8 +199,9 @@ class FinalVideoGenerator:
         # Create temporary files
         temp_audio_path = None
         if max_duration is not None and video_duration < full_duration:
-            # Create shorter audio clip
-            temp_audio_path = tempfile.mktemp(suffix='.mp3')
+            # Create shorter audio clip (NamedTemporaryFile, not the deprecated mktemp)
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_audio:
+                temp_audio_path = tmp_audio.name
             print(f"Creating {video_duration}s audio clip...")
             cmd = [
                 'ffmpeg', '-y', '-i', audio_path,
@@ -212,7 +219,8 @@ class FinalVideoGenerator:
 
             # Step 1: Create basic video (image + audio)
             print("Creating base video...")
-            temp_video_path = tempfile.mktemp(suffix='.mp4')
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_video:
+                temp_video_path = tmp_video.name
 
             cmd1 = [
                 'ffmpeg', '-y',
@@ -263,10 +271,17 @@ class FinalVideoGenerator:
 
                 # Build the subtitle filter with the font name (without extension)
                 # libass will find it via ASS_FONTPATH
-                filter_with_font = f"subtitles='{srt_abs_path}':force_style='FontName={font_name},Fontsize=28,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2'"
+                filter_with_font = (
+                    f"subtitles='{srt_abs_path}':force_style="
+                    f"'FontName={font_name},Fontsize={font_size},"
+                    f"PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment={alignment}'"
+                )
             else:
-                # No custom font, use default
-                filter_with_font = f"subtitles='{srt_abs_path}'"
+                # No custom font, use default styling
+                filter_with_font = (
+                    f"subtitles='{srt_abs_path}':force_style="
+                    f"'Fontsize={font_size},Alignment={alignment}'"
+                )
 
             print(f"Subtitle filter: {filter_with_font}")
 
@@ -288,14 +303,14 @@ class FinalVideoGenerator:
             if temp_audio_path and os.path.exists(temp_audio_path):
                 try:
                     os.unlink(temp_audio_path)
-                except:
+                except OSError:
                     pass
 
             # Clean up temporary video file
             if 'temp_video_path' in locals() and os.path.exists(temp_video_path):
                 try:
                     os.unlink(temp_video_path)
-                except:
+                except OSError:
                     pass
 
     def create_video_from_existing_files(self,
@@ -338,7 +353,7 @@ class FinalVideoGenerator:
                 os.write(temp_srt_fd, srt_content.encode('utf-8'))
                 os.close(temp_srt_fd)
                 temp_srt_fd = None
-            except:
+            except Exception:
                 # Clean up on error
                 if temp_srt_fd is not None:
                     os.close(temp_srt_fd)
@@ -356,7 +371,7 @@ class FinalVideoGenerator:
             if temp_srt_path and os.path.exists(temp_srt_path):
                 try:
                     os.unlink(temp_srt_path)
-                except:
+                except OSError:
                     pass
 
 

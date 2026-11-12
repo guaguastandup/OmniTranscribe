@@ -65,8 +65,8 @@ class TranscriptionCache:
         """
         sha256_hash = hashlib.sha256()
         with open(file_path, "rb") as f:
-            # Read file in chunks to handle large files
-            for byte_block in iter(lambda: f.read(4096), b""):
+            # Read file in chunks to handle large files (1MB keeps hashing fast)
+            for byte_block in iter(lambda: f.read(1024 * 1024), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
 
@@ -127,10 +127,12 @@ class TranscriptionCache:
             srt_content: SRT content to cache
             language: Source language code
         """
-        cache_key = self.get_cache_key(file_path, model_size, language)
+        # Hash the file once and build both the key and the filename from it
+        # (get_cache_key would hash the whole file a second time)
+        file_hash = self._get_file_hash(file_path)
+        cache_key = f"{file_hash}:{model_size}:{language}"
 
         # Generate cache filename
-        file_hash = self._get_file_hash(file_path)
         cache_filename = f"{file_hash[:16]}_{model_size}_{language}.srt"
         cache_file_path = self.cache_dir / cache_filename
 

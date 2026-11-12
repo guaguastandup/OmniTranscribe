@@ -112,6 +112,25 @@ class VideoConverter:
         except Exception as e:
             raise RuntimeError(f"Video conversion failed: {str(e)}")
 
+    @staticmethod
+    def _parse_frame_rate(value: str) -> float:
+        """
+        Parse an ffprobe rational frame rate like "30000/1001" or "25".
+
+        Args:
+            value: Frame rate string from ffprobe metadata
+
+        Returns:
+            Frames per second (0.0 if it cannot be parsed)
+        """
+        try:
+            numerator, _, denominator = str(value).partition("/")
+            num = float(numerator)
+            den = float(denominator) if denominator else 1.0
+            return num / den if den else 0.0
+        except ValueError:
+            return 0.0
+
     def get_video_info(self, video_path: str) -> dict:
         """
         Get information about the video file.
@@ -136,7 +155,7 @@ class VideoConverter:
                     'duration': float(video_stream.get('duration', 0)),
                     'width': video_stream.get('width'),
                     'height': video_stream.get('height'),
-                    'fps': eval(video_stream.get('r_frame_rate', '0/1')),
+                    'fps': self._parse_frame_rate(video_stream.get('r_frame_rate', '0/1')),
                     'video_codec': video_stream.get('codec_name')
                 })
 

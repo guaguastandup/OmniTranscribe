@@ -100,9 +100,9 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default=config.get('transcription.model', 'base'),
+        default=os.getenv('WHISPER_MODEL', config.get('transcription.model', 'base')),
         choices=["tiny", "base", "small", "medium", "large"],
-        help=f"Whisper model size (default: {config.get('transcription.model', 'base')})"
+        help="Whisper model size (env: WHISPER_MODEL)"
     )
     parser.add_argument(
         "--device",
@@ -112,13 +112,13 @@ def main():
     )
     parser.add_argument(
         "--language", "-l",
-        default=config.get('transcription.language', 'auto'),
-        help="Source language code for transcription (default: auto for auto-detection). Common: en, zh, ja, ko, es, fr, de, ru, ar, hi"
+        default=os.getenv('WHISPER_LANGUAGE', config.get('transcription.language', 'auto')),
+        help="Source language code for transcription (env: WHISPER_LANGUAGE; default: auto for auto-detection). Common: en, zh, ja, ko, es, fr, de, ru, ar, hi"
     )
     parser.add_argument(
         "--target-language", "-t",
-        default=config.get('translation.target_language', 'zh'),
-        help="Target language for translation (default: zh for Chinese). Use 'none' to skip translation"
+        default=os.getenv('WHISPER_TARGET_LANGUAGE', config.get('translation.target_language', 'zh')),
+        help="Target language for translation (env: WHISPER_TARGET_LANGUAGE; default: zh). Use 'none' to skip translation"
     )
     parser.add_argument(
         "--strict-mode",
@@ -168,8 +168,8 @@ def main():
     )
     parser.add_argument(
         "--translation-model",
-        default=config.get('translation.model', 'deepseek-chat'),
-        help=f"Translation model to use (default: {config.get('translation.model', 'deepseek-chat')})"
+        default=os.getenv('TRANSLATION_MODEL', config.get('translation.model', 'deepseek-chat')),
+        help="Translation service to use: google, deepseek, gemini, qwen, claude, gpt, custom (env: TRANSLATION_MODEL)"
     )
     parser.add_argument(
         "--translation-api-key",
@@ -239,7 +239,7 @@ def main():
         "--max-workers",
         type=int,
         default=2,
-        help="Maximum number of parallel workers for batch processing (default: 2)"
+        help="Reserved for future parallel batch processing; files are currently processed sequentially (default: 2)"
     )
     parser.add_argument(
         "--skip-existing",
@@ -355,19 +355,20 @@ def main():
             print("Cache module not available.")
         sys.exit(0)
 
-    # Handle preset options
+    # Handle preset options (must be applied to args directly: argparse defaults
+    # were already resolved when the parser was built)
     if args.fast:
-        config.set('transcription.model', 'tiny')
-        config.set('translation.chunk_size', 30)
+        args.model = 'tiny'
+        args.chunk_size = 30
         print("🚀 Using fast processing preset")
     elif args.quality:
-        config.set('transcription.model', 'large')
-        config.set('translation.chunk_size', 15)
+        args.model = 'large'
+        args.chunk_size = 15
         print("🎯 Using high quality preset")
     elif args.gpu:
-        config.set('transcription.model', 'medium')
-        config.set('transcription.device', 'auto')
-        config.set('translation.chunk_size', 25)
+        args.model = 'medium'
+        args.device = 'auto'
+        args.chunk_size = 25
         print("🔥 Using GPU accelerated preset")
 
     # Interactive mode
@@ -508,6 +509,8 @@ def main():
             processor = BatchProcessor(
                 model_size=args.model,
                 device=args.device,
+                language=args.language,
+                target_language=args.target_language,
                 deepseek_model=args.translation_model,
                 chunk_size=args.chunk_size,
                 prompt_file=args.prompt_file,
@@ -617,20 +620,11 @@ def main():
 
             transcriber = AudioTranscriber(model_size=args.model, device=args.device, use_cache=not args.no_cache)
 
-            # Configure transcription language and mode
-            if args.strict_mode:
-                print(f"Using strict transcription mode for: {args.language}")
-                srt_content = transcriber.transcribe_audio(
-                    current_audio_path,
-                    language=args.language,
-                    progress_callback=lambda current, total: None  # Simple callback
-                )
-            else:
-                srt_content = transcriber.transcribe_audio(
-                    current_audio_path,
-                    language=args.language,
-                    progress_callback=lambda current, total: None  # Simple callback
-                )
+            srt_content = transcriber.transcribe_audio(
+                current_audio_path,
+                language=args.language,
+                progress_callback=lambda current, total: None  # Simple callback
+            )
             transcriber.save_srt(srt_content, str(original_srt_path))
 
         else:
@@ -709,8 +703,8 @@ def main():
                     )
                     print(f"Original subtitles converted to: {converted_original}")
 
-                # Convert translated subtitles (if different format)
-                if args.convert_to != 'srt':
+                # Convert translated subtitles (only when translation ran)
+                if args.convert_to != 'srt' and args.target_language != 'none':
                     converted_translated = converter.convert_file(
                         str(translated_srt_path), args.convert_to
                     )
@@ -753,9 +747,11 @@ def main():
                         # Use the existing file directly if it's already in LRC format
                         lyrics_file = args.existing_srt
                 else:
-                    # Convert translated SRT to LRC
-                    # convert_file returns the actual output path
-                    lyrics_file = converter.convert_file(str(translated_srt_path), 'lrc')
+                    # Convert subtitles to LRC (fall back to original when translation is skipped)
+                    lyrics_source = (
+                        translated_srt_path if args.target_language != 'none' else original_srt_path
+                    )
+                    lyrics_file = converter.convert_file(str(lyrics_source), 'lrc')
 
                 # Create video with subtitles
                 video_generator = FinalVideoGenerator(custom_font_path=args.font_path)
@@ -763,7 +759,9 @@ def main():
                     audio_path=current_audio_path,
                     lyrics_path=lyrics_file,
                     image_path=args.background_image,
-                    output_path=str(video_output_path)
+                    output_path=str(video_output_path),
+                    font_size=args.subtitle_fontsize,
+                    subtitle_position=args.subtitle_position
                 )
 
                 print(f"Video generation completed successfully!")
@@ -789,9 +787,12 @@ def main():
                 if args.translate_only and args.existing_srt:
                     # For translate-only mode, use the existing lyrics file
                     lyrics_file = args.existing_srt
-                else:
+                elif args.target_language != 'none':
                     # Use the translated SRT file (will be processed by embedder)
                     lyrics_file = str(translated_srt_path)
+                else:
+                    # Translation skipped, use the original subtitles
+                    lyrics_file = str(original_srt_path)
 
                 # Generate output path for MP3 with metadata
                 mp3_output_path = output_dir / f"{base_name}_with_metadata.mp3"
