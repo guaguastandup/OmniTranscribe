@@ -19,10 +19,10 @@
 
 ## 待办
 
-- [~] **双管线收敛（部分完成 2026-11-14）**：CLI 单文件与 batch 模式已合并为
-      同一套 `BatchProcessor` 编排（含 MP3 嵌入、延迟翻译构造）；剩余：legacy
-      `gui.py` 与 product 管线的整合、CLI 是否切换到 resumable pipeline（会改变
-      输出语义，需产品决策）
+- [~] **双管线收敛（大部分完成 2026-11-14）**：CLI 单文件与 batch 模式已合并为
+      同一套 `BatchProcessor` 编排（含 MP3 嵌入、延迟翻译构造）；legacy 一次性
+      GUI（`gui.py`，~520 行）已删除，统一入口为 `run.py --gui`；剩余：CLI 是否
+      切换到 resumable pipeline（会改变输出语义，需产品决策）
 - [x] **打包正规化**：`src/` → `omnitranscribe/` 包 + `pyproject.toml` + `omnitranscribe`/`omnitranscribe-gui` 命令，`pip install .` 可用
 - [ ] **仓库瘦身**：两个字体共 35MB，考虑 Git LFS 或按需下载（历史改写需慎重）
 - [x] **真实端到端验证**（2026-11-14，macOS）：真实语音（say 合成）跑通 CLI 转录

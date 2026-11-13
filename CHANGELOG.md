@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `except:` clauses removed; translation requests get a timeout
   (`TRANSLATION_TIMEOUT`, default 120s)
 
+### Removed
+- The legacy one-shot Gradio GUI (`--legacy-gui`); the project-based GUI
+  (`run.py --gui`) covers all of its functionality with resumable
+  transcription, subtitle proofreading and more export options
+
 ### Changed
 - **Pipeline convergence**: the CLI single-file mode now delegates to the
   same orchestration as batch mode (`BatchProcessor`), which also gained
