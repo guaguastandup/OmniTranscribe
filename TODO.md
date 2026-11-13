@@ -21,8 +21,12 @@
 
 - [ ] **双管线收敛**：legacy CLI/GUI（`main.py`、`batch_processor.py`、`gui.py`）与
       resumable pipeline 存在约 300 行重复流程，应将 legacy 改为其薄封装
-- [ ] **打包正规化**：`pyproject.toml` + 包内相对导入 + console_scripts 入口，支持 pip install
+- [x] **打包正规化**：`src/` → `omnitranscribe/` 包 + `pyproject.toml` + `omnitranscribe`/`omnitranscribe-gui` 命令，`pip install .` 可用
 - [ ] **仓库瘦身**：两个字体共 35MB，考虑 Git LFS 或按需下载（历史改写需慎重）
-- [ ] **真实端到端验证**：装齐 openai-whisper 后用真实音视频跑通 CLI/GUI 两条路径
+- [x] **真实端到端验证**（2026-11-14，macOS）：真实语音（say 合成）跑通 CLI 转录
+  （auto 语言检测 + MPS + 缓存）、Google 翻译、`--target-language none`、
+  LRC 转换、MP4 生成（真实字幕烧录，抽帧确认）；顺带修复 MPS 崩溃、
+  `--target-language none` 误要 API key、ffmpeg 8 字幕滤镜语法三处问题
+- [ ] GUI 路径的端到端验证（gradio 5/6 构建+渲染已验证，未跑完整任务流）
 - [ ] GUI 语言列表仅 18 种，与"99+ 语言"宣传不符，可开放自由输入
 - [ ] 视频生成两遍编码合并为单遍（`-vf` 链式滤镜），导出耗时约可减半

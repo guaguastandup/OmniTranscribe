@@ -27,12 +27,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--subtitle-fontsize/--subtitle-position`, and the `WHISPER_*` /
   `TRANSLATION_MODEL` `.env` variables now actually take effect
 - `--target-language none` works end to end (format conversion, video and
-  MP3 exports fall back to the original subtitles)
+  MP3 exports fall back to the original subtitles) and no longer requires
+  an API key
+- Transcription no longer crashes on Apple Silicon (MPS): whisper's word
+  alignment uses float64, which MPS does not support; `word_timestamps` is
+  now opt-in (SRT output only needs segment timestamps)
+- Subtitle burning: the ffmpeg filter now uses the explicit `filename=`
+  syntax (ffmpeg 8+ rejects the old quoted positional form) and fails with
+  a clear message when the installed ffmpeg lacks libass
 - Replaced `eval()` on ffprobe output and deprecated `tempfile.mktemp()`;
   bare `except:` clauses removed; translation requests get a timeout
   (`TRANSLATION_TIMEOUT`, default 120s)
 
 ### Changed
+- **Packaging**: `src/` renamed to the installable `omnitranscribe/` package;
+  added `pyproject.toml` with `omnitranscribe` / `omnitranscribe-gui` console
+  scripts (`pip install .` now works); internal imports are package-relative
 - Product GUI visual refresh: gradient hero, semantic stage pills, progress
   bars, themed buttons and tabs
 - Whisper models are cached per (model, device) so resuming a project no
