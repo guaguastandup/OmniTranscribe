@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.converter import SubtitleConverter
+from omnitranscribe.converter import SubtitleConverter
 
 
 SAMPLE_SRT = """1

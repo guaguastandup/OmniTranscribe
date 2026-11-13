@@ -17,7 +17,7 @@ import tempfile
 import platform
 from pathlib import Path
 from typing import Optional
-from converter import SubtitleConverter
+from .converter import SubtitleConverter
 
 
 def _get_project_root() -> Path:
@@ -150,6 +150,20 @@ class FinalVideoGenerator:
             print("Warning: Unknown platform, using default font (may not display Chinese correctly)")
             return ""
 
+    @staticmethod
+    def _subtitles_filter_available() -> bool:
+        """Check whether this ffmpeg build ships the libass subtitles filter."""
+        try:
+            probe = subprocess.run(
+                ['ffmpeg', '-hide_banner', '-h', 'filter=subtitles'],
+                capture_output=True, text=True
+            )
+            combined = probe.stdout + probe.stderr
+            # ffmpeg exits 0 even for unknown filters; the verdict is in the text
+            return 'Unknown filter' not in combined and 'subtitles' in combined.lower()
+        except (OSError, subprocess.SubprocessError):
+            return False
+
     def create_video_with_subtitles(self,
                                    audio_path: str,
                                    srt_path: str,
@@ -248,13 +262,23 @@ class FinalVideoGenerator:
             if not os.path.exists(srt_abs_path):
                 raise FileNotFoundError(f"SRT file not found: {srt_abs_path}")
 
+            # The subtitles filter requires libass; give a clear error instead
+            # of an opaque ffmpeg exit code when the build lacks it.
+            if not self._subtitles_filter_available():
+                raise RuntimeError(
+                    "当前 FFmpeg 没有 subtitles 字幕滤镜（需要 libass 支持）。"
+                    "请安装完整版 FFmpeg（如 macOS: brew install ffmpeg）后重试。"
+                )
+
             # Build subtitle filter with Chinese font support
             print(f"Using font: {self.font_path}")
 
             # Prepare environment for FFmpeg
             env = os.environ.copy()
 
-            # If a custom font is specified, set up fontconfig environment
+            # Explicit "filename=" key keeps the filter chain parseable on
+            # ffmpeg 8+ (a quoted positional followed by :key=value no longer
+            # parses there).
             if self.font_path and os.path.exists(self.font_path):
                 font_dir = os.path.dirname(self.font_path)
                 font_file = os.path.basename(self.font_path)
@@ -271,14 +295,14 @@ class FinalVideoGenerator:
                 # Build the subtitle filter with the font name (without extension)
                 # libass will find it via ASS_FONTPATH
                 filter_with_font = (
-                    f"subtitles='{srt_abs_path}':force_style="
+                    f"subtitles=filename='{srt_abs_path}':force_style="
                     f"'FontName={font_name},Fontsize={font_size},"
                     f"PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment={alignment}'"
                 )
             else:
                 # No custom font, use default styling
                 filter_with_font = (
-                    f"subtitles='{srt_abs_path}':force_style="
+                    f"subtitles=filename='{srt_abs_path}':force_style="
                     f"'Fontsize={font_size},Alignment={alignment}'"
                 )
 

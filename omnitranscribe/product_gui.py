@@ -8,9 +8,9 @@ from typing import Dict, Optional, Tuple
 
 import gradio as gr
 
-from app_settings import AppSettings
-from project_store import ProjectStore
-from resumable_pipeline import ResumablePipeline, bootstrap_runtime
+from .app_settings import AppSettings
+from .project_store import ProjectStore
+from .resumable_pipeline import ResumablePipeline, bootstrap_runtime
 
 
 LANGUAGE_OPTIONS = {

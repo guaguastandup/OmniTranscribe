@@ -348,9 +348,9 @@ OmniTranscribe/
 ├── assets/                    # 默认资源
 │   ├── default_background.png  # 默认视频背景
 │   └── generate_default_bg.py  # 背景生成脚本
-└── src/                       # 源代码目录
+└── omnitranscribe/           # 源代码包（pip install . 可安装）
     ├── __init__.py
-    ├── main.py                # 主入口
+    ├── main.py                # 主入口（omnitranscribe 命令）
     ├── transcribe.py          # 音频转录
     ├── translator.py          # AI 翻译（含 Google Translate）
     ├── converter.py           # 字幕转换

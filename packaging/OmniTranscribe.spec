@@ -6,7 +6,7 @@ import sys
 from PyInstaller.utils.hooks import collect_all
 
 ROOT = Path(os.getcwd()).resolve()
-SRC = ROOT / "src"
+SRC = ROOT / "omnitranscribe"
 
 datas = []
 binaries = []
@@ -38,7 +38,7 @@ if bin_dir.exists():
 
 a = Analysis(
     [str(ROOT / "desktop_entry.py")],
-    pathex=[str(SRC)],
+    pathex=[str(ROOT), str(SRC)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

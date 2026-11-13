@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import List, Dict, Optional, Callable
 # from concurrent.futures import ThreadPoolExecutor, as_completed  # No longer needed for sequential processing
 
-from transcribe import AudioTranscriber
-from translator import UniversalTranslator, get_prompt_path
-from converter import SubtitleConverter
-from video_converter import VideoConverter
-from final_video_generator import FinalVideoGenerator
+from .transcribe import AudioTranscriber
+from .translator import UniversalTranslator, get_prompt_path
+from .converter import SubtitleConverter
+from .video_converter import VideoConverter
+from .final_video_generator import FinalVideoGenerator
 
 
 class BatchProcessor:

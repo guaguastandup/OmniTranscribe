@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnitranscribe"
+description = "Multilingual audio/video transcription, translation, and subtitle tooling built on OpenAI Whisper"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "OmniTranscribe Contributors" }]
+requires-python = ">=3.9"
+keywords = ["whisper", "transcription", "translation", "subtitles", "srt"]
+classifiers = [
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# Keep in sync with requirements.txt (which stays the source for
+# from-source setups; this list is what `pip install .` resolves).
+dependencies = [
+    "openai>=1.0.0",
+    "openai-whisper>=20231117",
+    "python-dotenv>=1.0.0",
+    "ffmpeg-python>=0.2.0",
+    "Pillow>=10.0.0",
+    "tqdm>=4.65.0",
+    "librosa>=0.10.0",
+    "gradio>=4.0.0,<7.0.0",
+    "deep-translator>=1.11.0",
+    "platformdirs>=4.2.0",
+    "keyring>=25.0.0",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/guaguastandup/OmniTranscribe"
+
+[project.scripts]
+omnitranscribe = "omnitranscribe.main:main"
+omnitranscribe-gui = "omnitranscribe.product_gui:main"
+
+[project.optional-dependencies]
+desktop = [
+    "pywebview>=5.0.0,<7.0.0",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "omnitranscribe.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["omnitranscribe*"]

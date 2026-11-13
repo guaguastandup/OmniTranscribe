@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.cache import TranscriptionCache
+from omnitranscribe.cache import TranscriptionCache
 
 
 SRT = "1\n00:00:00,000 --> 00:00:01,000\nhello\n"

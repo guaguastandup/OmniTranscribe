@@ -26,13 +26,13 @@ except ImportError:
     pass  # python-dotenv not installed, will use system env vars
 
 # Import local modules
-from transcribe import AudioTranscriber
-from translator import UniversalTranslator, get_prompt_path
-from converter import SubtitleConverter
-from video_converter import VideoConverter
-from final_video_generator import FinalVideoGenerator
-from simple_mp3_embedder import SimpleMP3Embedder
-from config import get_config
+from .transcribe import AudioTranscriber
+from .translator import UniversalTranslator, get_prompt_path
+from .converter import SubtitleConverter
+from .video_converter import VideoConverter
+from .final_video_generator import FinalVideoGenerator
+from .simple_mp3_embedder import SimpleMP3Embedder
+from .config import get_config
 
 
 # Language options

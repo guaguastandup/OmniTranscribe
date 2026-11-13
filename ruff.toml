@@ -12,4 +12,4 @@ select = ["E4", "E7", "E9", "F"]
 [lint.per-file-ignores]
 # Both deliberately import after mutating sys.path / defining constants first
 "desktop_entry.py" = ["E402"]
-"src/resumable_pipeline.py" = ["E402"]
+"omnitranscribe/resumable_pipeline.py" = ["E402"]

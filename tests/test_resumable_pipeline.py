@@ -1,6 +1,6 @@
 import unittest
 
-from src.subtitle_utils import SubtitleRow, ms_to_srt, parse_srt, render_srt, srt_to_ms
+from omnitranscribe.subtitle_utils import SubtitleRow, ms_to_srt, parse_srt, render_srt, srt_to_ms
 
 
 class SrtHelpersTests(unittest.TestCase):

@@ -17,7 +17,7 @@ try:
 except ImportError:
     INQUIRER_AVAILABLE = False
 
-from config import get_config
+from .config import get_config
 
 class InteractiveMode:
     """Interactive mode for user-friendly operation."""

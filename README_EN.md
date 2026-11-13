@@ -344,7 +344,7 @@ OmniTranscribe/
 ├── assets/                    # Default resources
 │   ├── default_background.png  # Default video background
 │   └── generate_default_bg.py  # Background generator
-└── src/                       # Source directory
+└── omnitranscribe/           # Source package (pip install .)
     ├── __init__.py
     ├── main.py                # Main entry point
     ├── transcribe.py          # Audio transcription

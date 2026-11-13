@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Callable, Tuple
 
 # Import cache module
 try:
-    from cache import get_cache
+    from .cache import get_cache
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False
@@ -68,7 +68,7 @@ class AudioTranscriber:
                 print(f"Reusing loaded Whisper model '{model_size}' on device: {device}")
         self.model = _MODEL_CACHE[model_key]
 
-    def transcribe_audio(self, audio_path: str, language: str = "auto", progress_callback: Optional[Callable[[int, int], None]] = None) -> str:
+    def transcribe_audio(self, audio_path: str, language: str = "auto", progress_callback: Optional[Callable[[int, int], None]] = None, word_timestamps: bool = False) -> str:
         """
         Transcribe audio file to text
 
@@ -76,6 +76,9 @@ class AudioTranscriber:
             audio_path: Path to the audio file
             language: Language code (default: 'auto' for auto-detection)
             progress_callback: Optional callback function for progress updates (current, total)
+            word_timestamps: Enable word-level timestamps. Off by default: the
+                SRT output only uses segment timestamps, and whisper's word
+                alignment crashes on Apple MPS (float64 is unsupported there).
 
         Returns:
             SRT formatted subtitle content
@@ -118,7 +121,7 @@ class AudioTranscriber:
             audio_path,
             language=whisper_language,
             task="transcribe",
-            word_timestamps=True,
+            word_timestamps=word_timestamps,
             temperature=0.0,  # Lower temperature for more consistent results
             beam_size=5,      # Use beam search for better results
             patience=1.0,     # Beam search patience

@@ -7,14 +7,14 @@ import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from project_store import ProjectStore
+from .project_store import ProjectStore
 
 
 ProgressCallback = Optional[Callable[[int, int, str], None]]
 StopCallback = Optional[Callable[[], bool]]
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".wmv", ".flv", ".webm", ".m4v"}
 
-from subtitle_utils import SubtitleRow, ms_to_srt, parse_srt, render_srt, srt_to_ms
+from .subtitle_utils import SubtitleRow, ms_to_srt, parse_srt, render_srt, srt_to_ms
 
 
 def resource_path(relative: str) -> Path:
@@ -182,7 +182,7 @@ class ResumablePipeline:
             return self.store.get_checkpoint(project_id, "transcription")
 
         self.store.update_project(project_id, stage="transcribing")
-        from transcribe import AudioTranscriber
+        from .transcribe import AudioTranscriber
 
         transcriber = AudioTranscriber(
             model_size=project.whisper_model,
@@ -285,7 +285,7 @@ class ResumablePipeline:
         # plan from only missing/stale rows makes an interrupted run naturally resume.
         self.store.replace_task_units(project_id, "translation", units)
         self.store.update_project(project_id, stage="translating")
-        from translator import UniversalTranslator
+        from .translator import UniversalTranslator
 
         translator = UniversalTranslator(model=project.translation_model)
         total = len(batches)
@@ -437,8 +437,8 @@ class ResumablePipeline:
             if source.suffix.lower() in VIDEO_EXTENSIONS:
                 return self.burn_subtitles_to_video(project_id, subtitle_path, font_size=font_size)
 
-            from converter import SubtitleConverter
-            from final_video_generator import FinalVideoGenerator
+            from .converter import SubtitleConverter
+            from .final_video_generator import FinalVideoGenerator
 
             background = (
                 Path(background_image)
@@ -469,7 +469,7 @@ class ResumablePipeline:
             return Path(result)
 
         if output_kind == "mp3":
-            from simple_mp3_embedder import SimpleMP3Embedder
+            from .simple_mp3_embedder import SimpleMP3Embedder
 
             audio_mp3 = work / "source_audio.mp3"
             if source.suffix.lower() == ".mp3":
@@ -514,10 +514,12 @@ class ResumablePipeline:
         subtitle = Path(subtitle_path).resolve()
         filter_path = str(subtitle).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
         style = f"FontSize={max(12, int(font_size))},Outline=1,Shadow=0,MarginV=24"
+        # Explicit "filename=" key: ffmpeg 8+ no longer parses a quoted
+        # positional followed by :key=value in a filter chain.
         subprocess.run(
             [
                 _tool("ffmpeg"), "-y", "-i", str(source),
-                "-vf", f"subtitles='{filter_path}':force_style='{style}'",
+                "-vf", f"subtitles=filename='{filter_path}':force_style='{style}'",
                 "-c:v", "libx264", "-preset", "medium", "-crf", "20",
                 "-c:a", "aac", "-b:a", "192k", str(output),
             ],

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.config import Config
+from omnitranscribe.config import Config
 
 
 class ConfigTests(unittest.TestCase):

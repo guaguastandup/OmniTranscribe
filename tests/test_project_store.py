@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.project_store import ProjectStore
+from omnitranscribe.project_store import ProjectStore
 
 
 class ProjectStoreTests(unittest.TestCase):

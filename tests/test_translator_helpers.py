@@ -1,7 +1,7 @@
 """Unit tests for translator pure helpers (no API keys or SDK required)."""
 import unittest
 
-from src.translator import UniversalTranslator, get_prompt_path
+from omnitranscribe.translator import UniversalTranslator, get_prompt_path
 
 
 SRT = (

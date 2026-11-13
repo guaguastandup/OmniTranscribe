@@ -12,8 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SRC = ROOT / "src"
-sys.path.insert(0, str(SRC))
+sys.path.insert(0, str(ROOT))
 
 try:
     from dotenv import load_dotenv
@@ -35,16 +34,16 @@ if __name__ == "__main__":
     args, remaining = parser.parse_known_args()
 
     if args.desktop:
-        from product_gui import ProductGUI
+        from omnitranscribe.product_gui import ProductGUI
         ProductGUI().launch_desktop()
     elif args.gui:
-        from product_gui import ProductGUI
+        from omnitranscribe.product_gui import ProductGUI
         ProductGUI().launch(share=args.share)
     elif args.legacy_gui:
-        from src import gui
+        from omnitranscribe import gui
         sys.argv = ["gui.py"] + (["--share"] if args.share else [])
         gui.main()
     else:
-        from src import main
+        from omnitranscribe import main
         sys.argv = ["main.py"] + remaining
-        main()
+        main.main()

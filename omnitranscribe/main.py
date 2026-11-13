@@ -69,19 +69,19 @@ try:
 except ImportError:
     pass  # python-dotenv not installed, will use system env vars
 
-from transcribe import AudioTranscriber
-from translator import UniversalTranslator
-from converter import SubtitleConverter
-from video_converter import VideoConverter
-from final_video_generator import FinalVideoGenerator
-from batch_processor import BatchProcessor
-from simple_mp3_embedder import SimpleMP3Embedder
-from config import get_config
-from interactive import run_interactive
+from .transcribe import AudioTranscriber
+from .translator import UniversalTranslator
+from .converter import SubtitleConverter
+from .video_converter import VideoConverter
+from .final_video_generator import FinalVideoGenerator
+from .batch_processor import BatchProcessor
+from .simple_mp3_embedder import SimpleMP3Embedder
+from .config import get_config
+from .interactive import run_interactive
 
 # Import cache module
 try:
-    from cache import get_cache
+    from .cache import get_cache
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False
@@ -639,35 +639,29 @@ def main():
             with open(original_srt_path, 'w', encoding='utf-8') as f:
                 f.write(srt_content)
 
-        # Step 3: Translate to target language
+        # Step 3: Translate to target language (translator is only built when
+        # translation is actually requested, so --target-language none needs
+        # no API key)
         if args.target_language != 'none':
             print("\n" + "=" * 50)
             print(f"Step 3: Translating subtitles to {args.target_language}")
             print("=" * 50)
 
-        # Configure translator based on arguments
-        if args.translation_model == "custom":
-            if not args.translation_url or not args.translation_api_key:
+            # Configure translator based on arguments
+            if args.translation_model == "custom" and (not args.translation_url or not args.translation_api_key):
                 print("Error: --translation-url and --translation-api-key are required when using custom model")
                 sys.exit(1)
-            translator = UniversalTranslator(
-                api_key=args.translation_api_key,
-                model=args.translation_model,
-                base_url=args.translation_url
-            )
-        else:
+
             translator = UniversalTranslator(
                 api_key=args.translation_api_key,
                 model=args.translation_model,
                 base_url=args.translation_url
             )
 
-        print(f"Using translation model: {args.translation_model}")
-        if args.translation_url:
-            print(f"Using custom API URL: {args.translation_url}")
+            print(f"Using translation model: {args.translation_model}")
+            if args.translation_url:
+                print(f"Using custom API URL: {args.translation_url}")
 
-        # Only translate if target_language is not 'none'
-        if args.target_language != 'none':
             translated_content = translator.translate_srt(
                 srt_content,
                 prompt_path=args.prompt_file,
