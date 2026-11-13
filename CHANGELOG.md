@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`TRANSLATION_TIMEOUT`, default 120s)
 
 ### Changed
+- **Pipeline convergence**: the CLI single-file mode now delegates to the
+  same orchestration as batch mode (`BatchProcessor`), which also gained
+  MP3-metadata embedding, per-request translation overrides and a lazy
+  translator (no API key needed when translation is skipped); unknown
+  translation service names are validated up front with a clear error
 - **Packaging**: `src/` renamed to the installable `omnitranscribe/` package;
   added `pyproject.toml` with `omnitranscribe` / `omnitranscribe-gui` console
   scripts (`pip install .` now works); internal imports are package-relative

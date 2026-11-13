@@ -17,10 +17,15 @@ from .translator import UniversalTranslator, get_prompt_path
 from .converter import SubtitleConverter
 from .video_converter import VideoConverter
 from .final_video_generator import FinalVideoGenerator
+from .simple_mp3_embedder import SimpleMP3Embedder
 
 
 class BatchProcessor:
-    """Process multiple audio/video files in batch."""
+    """Transcribe/translate media files, with optional video and MP3 exports.
+
+    This is the single orchestration point for the one-shot (non-resumable)
+    pipeline: both the CLI single-file mode and batch mode delegate here.
+    """
 
     def __init__(self,
                  model_size: str = "base",
@@ -28,6 +33,8 @@ class BatchProcessor:
                  language: str = "auto",
                  target_language: str = "zh",
                  deepseek_model: str = "deepseek-chat",
+                 translation_api_key: Optional[str] = None,
+                 translation_url: Optional[str] = None,
                  chunk_size: int = 20,
                  prompt_file: str = "prompt.md",
                  max_workers: int = 2,
@@ -35,7 +42,13 @@ class BatchProcessor:
                  background_image: Optional[str] = None,
                  subtitle_position: str = "bottom",
                  subtitle_fontsize: int = 48,
-                 font_path: Optional[str] = None):
+                 font_path: Optional[str] = None,
+                 embed_mp3_metadata: bool = False,
+                 cover_image: Optional[str] = None,
+                 track_title: Optional[str] = None,
+                 artist_name: Optional[str] = None,
+                 album_name: Optional[str] = None,
+                 use_cache: bool = True):
         """
         Initialize the batch processor.
 
@@ -45,6 +58,8 @@ class BatchProcessor:
             language: Source language code for transcription ('auto' for auto-detection)
             target_language: Target language code for translation ('none' to skip translation)
             deepseek_model: Translation model/service to use
+            translation_api_key: API key override for the translation service
+            translation_url: Custom OpenAI-compatible API URL override
             chunk_size: Number of subtitle entries per translation chunk
             prompt_file: Path to translation prompt file
             max_workers: Maximum number of parallel workers (currently unused; processing is sequential)
@@ -53,11 +68,22 @@ class BatchProcessor:
             subtitle_position: Position of subtitles in video (top, bottom, center)
             subtitle_fontsize: Font size for subtitles in video
             font_path: Path to custom font file for subtitles (TTF/OTF/TTC)
+            embed_mp3_metadata: Embed lyrics and cover art into an MP3 copy
+            cover_image: Path to cover image for MP3 metadata embedding
+            track_title: Track title for MP3 metadata embedding
+            artist_name: Artist name for MP3 metadata embedding
+            album_name: Album name for MP3 metadata embedding
+            use_cache: Whether to use the transcription cache
         """
-        self.transcriber = AudioTranscriber(model_size, device)
-        self.translator = UniversalTranslator(model=deepseek_model)
+        self.transcriber = AudioTranscriber(model_size, device, use_cache=use_cache)
         self.converter = SubtitleConverter()
         self.video_converter = VideoConverter()
+
+        # The translator is only built when a file actually needs
+        # translating, so --target-language none requires no API key.
+        self._translation_api_key = translation_api_key
+        self._translation_url = translation_url
+        self._translator = None
 
         self.language = language
         self.target_language = target_language
@@ -72,6 +98,23 @@ class BatchProcessor:
         self.subtitle_position = subtitle_position
         self.subtitle_fontsize = subtitle_fontsize
         self.font_path = font_path
+
+        # MP3 metadata embedding settings
+        self.embed_mp3_metadata = embed_mp3_metadata
+        self.cover_image = cover_image
+        self.track_title = track_title
+        self.artist_name = artist_name
+        self.album_name = album_name
+
+    def _get_translator(self) -> UniversalTranslator:
+        """Build the translation client on first use."""
+        if self._translator is None:
+            self._translator = UniversalTranslator(
+                model=self.translation_model,
+                api_key=self._translation_api_key,
+                base_url=self._translation_url,
+            )
+        return self._translator
 
     def find_media_files(self,
                         input_path: str,
@@ -119,7 +162,8 @@ class BatchProcessor:
                            output_dir: str,
                            convert_to: Optional[str] = None,
                            keep_video_files: bool = True,
-                           skip_existing: bool = False) -> Dict[str, str]:
+                           skip_existing: bool = False,
+                           flat_output: bool = False) -> Dict[str, str]:
         """
         Process a single audio/video file.
 
@@ -129,6 +173,9 @@ class BatchProcessor:
             convert_to: Output subtitle format (srt, vtt, lrc)
             keep_video_files: Whether to keep original video files after conversion
             skip_existing: Skip files that already have processed output
+            flat_output: Write outputs directly into output_dir instead of a
+                per-file subdirectory (used by the CLI single-file mode so
+                its output layout stays unchanged)
 
         Returns:
             Dictionary containing result file paths
@@ -137,8 +184,12 @@ class BatchProcessor:
         output_dir = Path(output_dir)
         output_dir.mkdir(exist_ok=True)
 
-        # Create subdirectory for this file to organize outputs
-        file_output_dir = output_dir / file_path.stem
+        # Batch mode organizes outputs into a subdirectory per file; the CLI
+        # single-file mode writes flat into the output directory.
+        if flat_output:
+            file_output_dir = output_dir
+        else:
+            file_output_dir = output_dir / file_path.stem
         file_output_dir.mkdir(exist_ok=True)
 
         base_name = file_path.stem
@@ -190,13 +241,13 @@ class BatchProcessor:
                 print(f"[{file_path.name}] Skipping translation (--target-language none)")
             else:
                 print(f"[{file_path.name}] Translating subtitles to {self.target_language}...")
-                translated_content = self.translator.translate_srt(
+                translated_content = self._get_translator().translate_srt(
                     srt_content,
                     prompt_path=self.prompt_file,
                     chunk_size=self.chunk_size,
                     target_language=self.target_language
                 )
-                self.translator.save_translated_srt(translated_content, str(translated_srt_path))
+                self._get_translator().save_translated_srt(translated_content, str(translated_srt_path))
 
             # Step 4: Convert subtitle format if requested
             if convert_to and convert_to != 'srt':
@@ -241,6 +292,31 @@ class BatchProcessor:
                 )
 
                 result['video_file'] = result_video_path
+
+            # Step 6: Embed lyrics and cover art into an MP3 copy if requested
+            if self.embed_mp3_metadata:
+                if not current_audio_path.lower().endswith('.mp3'):
+                    raise ValueError("MP3 metadata embedding requires an MP3 audio file")
+
+                print(f"[{file_path.name}] Embedding lyrics and cover art into MP3...")
+
+                # Use the translated subtitles as lyrics, falling back to the
+                # original ones when translation is skipped
+                lyrics_source = translated_srt_path if not skip_translation else original_srt_path
+                mp3_output_path = file_output_dir / f"{base_name}_with_metadata.mp3"
+
+                embedder = SimpleMP3Embedder()
+                mp3_result_path = embedder.embed_metadata(
+                    audio_path=current_audio_path,
+                    lyrics_path=str(lyrics_source),
+                    cover_path=self.cover_image,
+                    title=self.track_title,
+                    artist=self.artist_name,
+                    album=self.album_name,
+                    output_path=str(mp3_output_path)
+                )
+
+                result['mp3_file'] = mp3_result_path
 
             result['status'] = 'completed'
 

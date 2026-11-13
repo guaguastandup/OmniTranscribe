@@ -69,10 +69,8 @@ try:
 except ImportError:
     pass  # python-dotenv not installed, will use system env vars
 
-from .transcribe import AudioTranscriber
 from .translator import UniversalTranslator
 from .converter import SubtitleConverter
-from .video_converter import VideoConverter
 from .final_video_generator import FinalVideoGenerator
 from .batch_processor import BatchProcessor
 from .simple_mp3_embedder import SimpleMP3Embedder
@@ -85,6 +83,143 @@ try:
     CACHE_AVAILABLE = True
 except ImportError:
     CACHE_AVAILABLE = False
+
+
+def _run_translate_only(args, output_dir, keep_video_files):
+    """Translate an existing SRT file and optionally produce exports from it.
+
+    The transcription stages are skipped; the existing file is used as the
+    source for translation, format conversion, video generation and MP3
+    metadata embedding.
+    """
+    base_name = Path(args.existing_srt).stem
+    current_audio_path = args.audio_file
+
+    original_srt_path = output_dir / f"{base_name}_original.srt"
+    translated_srt_path = output_dir / f"{base_name}_translated.srt"
+
+    try:
+        print("=" * 50)
+        print("Using existing SRT file for translation")
+        print("=" * 50)
+
+        with open(args.existing_srt, 'r', encoding='utf-8') as f:
+            srt_content = f.read()
+
+        # Copy the existing file to the output directory for consistency
+        with open(original_srt_path, 'w', encoding='utf-8') as f:
+            f.write(srt_content)
+
+        # Translate to target language (translator is only built when
+        # translation is actually requested)
+        if args.target_language != 'none':
+            print("\n" + "=" * 50)
+            print(f"Translating subtitles to {args.target_language}")
+            print("=" * 50)
+
+            if args.translation_model == "custom" and (not args.translation_url or not args.translation_api_key):
+                print("Error: --translation-url and --translation-api-key are required when using custom model")
+                sys.exit(1)
+
+            translator = UniversalTranslator(
+                api_key=args.translation_api_key,
+                model=args.translation_model,
+                base_url=args.translation_url
+            )
+
+            print(f"Using translation model: {args.translation_model}")
+            translated_content = translator.translate_srt(
+                srt_content,
+                prompt_path=args.prompt_file,
+                chunk_size=args.chunk_size,
+                target_language=args.target_language
+            )
+            translator.save_translated_srt(translated_content, str(translated_srt_path))
+
+        print("\n" + "=" * 50)
+        print("Processing completed successfully!")
+        print("=" * 50)
+        print(f"Original subtitles copied to: {original_srt_path}")
+        if args.target_language != 'none':
+            print(f"Translated subtitles ({args.target_language}): {translated_srt_path}")
+
+        # Format conversion (if requested)
+        if args.convert_to:
+            print("\n" + "=" * 50)
+            print("Converting subtitle format")
+            print("=" * 50)
+            try:
+                converter = SubtitleConverter()
+                if args.convert_to != 'srt' and args.target_language != 'none':
+                    converted = converter.convert_file(str(translated_srt_path), args.convert_to)
+                    print(f"Translated subtitles converted to: {converted}")
+                print("Format conversion completed successfully!")
+            except Exception as e:
+                print(f"Format conversion failed: {str(e)}")
+
+        # Video generation (if requested)
+        if args.generate_video:
+            print("\n" + "=" * 50)
+            print("Generating MP4 video with subtitles")
+            print("=" * 50)
+            try:
+                if not os.path.exists(args.background_image):
+                    print(f"Error: Background image not found: {args.background_image}")
+                    sys.exit(1)
+
+                video_output_path = output_dir / f"{base_name}_video.mp4"
+
+                # Non-SRT lyrics files (e.g. LRC) can be used directly
+                if not args.existing_srt.lower().endswith('.srt'):
+                    lyrics_file = args.existing_srt
+                elif args.target_language != 'none':
+                    lyrics_file = SubtitleConverter().convert_file(str(translated_srt_path), 'lrc')
+                else:
+                    lyrics_file = SubtitleConverter().convert_file(str(original_srt_path), 'lrc')
+
+                video_generator = FinalVideoGenerator(custom_font_path=args.font_path)
+                result_path = video_generator.create_video_from_existing_files(
+                    audio_path=current_audio_path,
+                    lyrics_path=lyrics_file,
+                    image_path=args.background_image,
+                    output_path=str(video_output_path),
+                    font_size=args.subtitle_fontsize,
+                    subtitle_position=args.subtitle_position
+                )
+                print("Video generation completed successfully!")
+                print(f"Output video: {result_path}")
+            except Exception as e:
+                print(f"Video generation failed: {str(e)}")
+
+        # MP3 metadata embedding (if requested)
+        if args.embed_mp3_metadata:
+            print("\n" + "=" * 50)
+            print("Embedding lyrics and cover art into MP3")
+            print("=" * 50)
+            try:
+                if not current_audio_path.lower().endswith('.mp3'):
+                    print("Error: MP3 metadata embedding requires an MP3 audio file")
+                    sys.exit(1)
+
+                mp3_output_path = output_dir / f"{base_name}_with_metadata.mp3"
+                embedder = SimpleMP3Embedder()
+                result_path = embedder.embed_metadata(
+                    audio_path=current_audio_path,
+                    lyrics_path=args.existing_srt,
+                    cover_path=args.cover_image,
+                    title=args.track_title,
+                    artist=args.artist_name,
+                    album=args.album_name,
+                    output_path=str(mp3_output_path)
+                )
+                print("MP3 metadata embedding completed successfully!")
+                print(f"Output MP3: {result_path}")
+            except Exception as e:
+                print(f"MP3 metadata embedding failed: {str(e)}")
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
 
 def main():
     # Load configuration defaults
@@ -464,6 +599,15 @@ def main():
         print(f"Error: Cover image not found: {args.cover_image}")
         sys.exit(1)
 
+    # Validate custom translation arguments up front. Any unknown service
+    # name is treated as a custom OpenAI-compatible endpoint by the
+    # translator, so it needs url+key regardless of the processing mode.
+    known_services = set(UniversalTranslator.list_supported_models()) | {"custom"}
+    if (args.translation_model not in known_services
+            and (not args.translation_url or not args.translation_api_key)):
+        print("Error: --translation-url and --translation-api-key are required when using custom model")
+        sys.exit(1)
+
     # Validate arguments
     if args.convert_only:
         # Convert-only mode
@@ -578,246 +722,61 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
 
-    # Generate base filename
     if args.translate_only:
-        # For translate-only mode, use the existing SRT file's stem but ensure it's in the output directory
-        base_name = Path(args.existing_srt).stem
-        current_audio_path = args.audio_file if args.audio_file else None  # Use the provided audio file (can be None if not provided)
-    else:
-        base_name = Path(args.audio_file).stem
-        current_audio_path = args.audio_file
+        # Translate-only mode: no transcription; the existing SRT is the source
+        _run_translate_only(args, output_dir, keep_video_files)
+        return
 
-    original_srt_path = output_dir / f"{base_name}_original.srt"
-    translated_srt_path = output_dir / f"{base_name}_translated.srt"
+    # Single-file mode: delegate the whole flow (video-to-audio conversion,
+    # transcription, translation, format conversion, video/MP3 exports) to
+    # the shared one-shot pipeline. flat_output keeps the CLI's original
+    # output layout (files written directly into --output-dir).
+    processor = BatchProcessor(
+        model_size=args.model,
+        device=args.device,
+        language=args.language,
+        target_language=args.target_language,
+        deepseek_model=args.translation_model,
+        translation_api_key=args.translation_api_key,
+        translation_url=args.translation_url,
+        chunk_size=args.chunk_size,
+        prompt_file=args.prompt_file,
+        max_workers=args.max_workers,
+        generate_video=args.generate_video,
+        background_image=args.background_image,
+        subtitle_position=args.subtitle_position,
+        subtitle_fontsize=args.subtitle_fontsize,
+        font_path=args.font_path,
+        embed_mp3_metadata=args.embed_mp3_metadata,
+        cover_image=args.cover_image,
+        track_title=args.track_title,
+        artist_name=args.artist_name,
+        album_name=args.album_name,
+        use_cache=not args.no_cache,
+    )
 
-    try:
-        # Step 1: Convert video to audio if needed (unless translate-only)
-        if not args.translate_only:
-            video_converter = VideoConverter()
+    result = processor.process_single_file(
+        args.audio_file,
+        args.output_dir,
+        convert_to=args.convert_to,
+        keep_video_files=keep_video_files,
+        flat_output=True,
+    )
 
-            if video_converter.is_video_file(current_audio_path):
-                print("=" * 50)
-                print("Step 1: Converting video to audio")
-                print("=" * 50)
-
-                current_audio_path, was_converted = video_converter.convert_to_audio(
-                    current_audio_path,
-                    output_format='mp3',
-                    output_dir=str(output_dir),
-                    keep_original=keep_video_files
-                )
-
-                if was_converted:
-                    print(f"Video converted to audio: {current_audio_path}")
-
-                print()
-
-            # Step 2: Transcribe audio to subtitles
-            print("=" * 50)
-            source_lang = args.language if args.language != 'auto' else 'auto-detected'
-            print(f"Step 2: Transcribing audio ({source_lang}) to subtitles")
-            print("=" * 50)
-
-            transcriber = AudioTranscriber(model_size=args.model, device=args.device, use_cache=not args.no_cache)
-
-            srt_content = transcriber.transcribe_audio(
-                current_audio_path,
-                language=args.language,
-                progress_callback=lambda current, total: None  # Simple callback
-            )
-            transcriber.save_srt(srt_content, str(original_srt_path))
-
-        else:
-            print("=" * 50)
-            print("Using existing SRT file for translation")
-            print("=" * 50)
-
-            with open(args.existing_srt, 'r', encoding='utf-8') as f:
-                srt_content = f.read()
-
-            # Also copy the existing file to output directory for consistency
-            with open(original_srt_path, 'w', encoding='utf-8') as f:
-                f.write(srt_content)
-
-        # Step 3: Translate to target language (translator is only built when
-        # translation is actually requested, so --target-language none needs
-        # no API key)
-        if args.target_language != 'none':
-            print("\n" + "=" * 50)
-            print(f"Step 3: Translating subtitles to {args.target_language}")
-            print("=" * 50)
-
-            # Configure translator based on arguments
-            if args.translation_model == "custom" and (not args.translation_url or not args.translation_api_key):
-                print("Error: --translation-url and --translation-api-key are required when using custom model")
-                sys.exit(1)
-
-            translator = UniversalTranslator(
-                api_key=args.translation_api_key,
-                model=args.translation_model,
-                base_url=args.translation_url
-            )
-
-            print(f"Using translation model: {args.translation_model}")
-            if args.translation_url:
-                print(f"Using custom API URL: {args.translation_url}")
-
-            translated_content = translator.translate_srt(
-                srt_content,
-                prompt_path=args.prompt_file,
-                chunk_size=args.chunk_size,
-                target_language=args.target_language
-            )
-            translator.save_translated_srt(translated_content, str(translated_srt_path))
-
-        # Step 3: Summary
-        print("\n" + "=" * 50)
-        print("Processing completed successfully!")
-        print("=" * 50)
-        if not args.translate_only:
-            print(f"Original subtitles: {original_srt_path}")
-        else:
-            print(f"Original subtitles copied to: {original_srt_path}")
-        if args.target_language != 'none':
-            print(f"Translated subtitles ({args.target_language}): {translated_srt_path}")
-
-        # Step 4: Format conversion (if requested)
-        if args.convert_to:
-            print("\n" + "=" * 50)
-            print("Step 4: Converting subtitle format")
-            print("=" * 50)
-
-            try:
-                converter = SubtitleConverter()
-
-                # Convert original subtitles (if not translate-only)
-                if not args.translate_only and args.convert_to != 'srt':
-                    converted_original = converter.convert_file(
-                        str(original_srt_path), args.convert_to
-                    )
-                    print(f"Original subtitles converted to: {converted_original}")
-
-                # Convert translated subtitles (only when translation ran)
-                if args.convert_to != 'srt' and args.target_language != 'none':
-                    converted_translated = converter.convert_file(
-                        str(translated_srt_path), args.convert_to
-                    )
-                    print(f"Translated subtitles converted to: {converted_translated}")
-
-                print("Format conversion completed successfully!")
-
-            except Exception as e:
-                print(f"Format conversion failed: {str(e)}")
-                print("You can manually convert the files later using the converter module.")
-
-        # Step 5: Video generation or MP3 metadata embedding (if requested)
-        if args.generate_video:
-            print("\n" + "=" * 50)
-            print("Step 5: Generating MP4 video with subtitles")
-            print("=" * 50)
-
-            try:
-                # Check if background image exists
-                if not os.path.exists(args.background_image):
-                    print(f"Error: Background image not found: {args.background_image}")
-                    sys.exit(1)
-
-                # Generate output path for video
-                video_output_path = output_dir / f"{base_name}_video.mp4"
-
-                # Handle lyrics file for video generation
-                converter = SubtitleConverter()
-                if args.translate_only and args.existing_srt:
-                    # For translate-only mode, we need to check if the existing file is SRT or needs conversion
-                    if args.existing_srt.lower().endswith('.srt'):
-                        # Convert the existing SRT or use the translated SRT
-                        if os.path.exists(translated_srt_path):
-                            # convert_file returns the actual output path
-                            lyrics_file = converter.convert_file(str(translated_srt_path), 'lrc')
-                        else:
-                            # Use the existing SRT file and convert it to LRC
-                            lyrics_file = converter.convert_file(args.existing_srt, 'lrc')
-                    else:
-                        # Use the existing file directly if it's already in LRC format
-                        lyrics_file = args.existing_srt
-                else:
-                    # Convert subtitles to LRC (fall back to original when translation is skipped)
-                    lyrics_source = (
-                        translated_srt_path if args.target_language != 'none' else original_srt_path
-                    )
-                    lyrics_file = converter.convert_file(str(lyrics_source), 'lrc')
-
-                # Create video with subtitles
-                video_generator = FinalVideoGenerator(custom_font_path=args.font_path)
-                result_path = video_generator.create_video_from_existing_files(
-                    audio_path=current_audio_path,
-                    lyrics_path=lyrics_file,
-                    image_path=args.background_image,
-                    output_path=str(video_output_path),
-                    font_size=args.subtitle_fontsize,
-                    subtitle_position=args.subtitle_position
-                )
-
-                print("Video generation completed successfully!")
-                print(f"Output video: {result_path}")
-
-            except Exception as e:
-                print(f"Video generation failed: {str(e)}")
-                print("You can try generating the video manually using the video_generator module.")
-
-        # Step 6: MP3 metadata embedding (if requested)
-        if args.embed_mp3_metadata:
-            print("\n" + "=" * 50)
-            print("Step 6: Embedding lyrics and cover art into MP3")
-            print("=" * 50)
-
-            try:
-                # Ensure we have an MP3 file to work with
-                if not current_audio_path.lower().endswith('.mp3'):
-                    print("Error: MP3 metadata embedding requires an MP3 audio file")
-                    sys.exit(1)
-
-                # Handle lyrics file for metadata embedding
-                if args.translate_only and args.existing_srt:
-                    # For translate-only mode, use the existing lyrics file
-                    lyrics_file = args.existing_srt
-                elif args.target_language != 'none':
-                    # Use the translated SRT file (will be processed by embedder)
-                    lyrics_file = str(translated_srt_path)
-                else:
-                    # Translation skipped, use the original subtitles
-                    lyrics_file = str(original_srt_path)
-
-                # Generate output path for MP3 with metadata
-                mp3_output_path = output_dir / f"{base_name}_with_metadata.mp3"
-
-                # Create MP3 metadata embedder
-                embedder = SimpleMP3Embedder()
-                result_path = embedder.embed_metadata(
-                    audio_path=current_audio_path,
-                    lyrics_path=lyrics_file,
-                    cover_path=args.cover_image,
-                    title=args.track_title,
-                    artist=args.artist_name,
-                    album=args.album_name,
-                    output_path=str(mp3_output_path)
-                )
-
-                print("MP3 metadata embedding completed successfully!")
-                print(f"Output MP3: {result_path}")
-
-                # Show embedded metadata info
-                info = embedder.get_file_info(result_path)
-                print(f"File duration: {info.get('duration', 'unknown')} seconds")
-                print(f"Has metadata: {info.get('has_metadata', False)}")
-
-            except Exception as e:
-                print(f"MP3 metadata embedding failed: {str(e)}")
-                print("You can try embedding metadata manually using the mp3_metadata_embedder module.")
-
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    if result['status'] == 'error':
+        print(f"Error: {result['error']}")
         sys.exit(1)
+
+    print("\n" + "=" * 50)
+    print("Processing completed successfully!")
+    print("=" * 50)
+    print(f"Original subtitles: {result['original_srt']}")
+    if args.target_language != 'none':
+        print(f"Translated subtitles ({args.target_language}): {result['translated_srt']}")
+    if result.get('video_file'):
+        print(f"Output video: {result['video_file']}")
+    if result.get('mp3_file'):
+        print(f"Output MP3: {result['mp3_file']}")
 
 if __name__ == "__main__":
     main()
