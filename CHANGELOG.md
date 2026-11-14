@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2026-11-13
 
 ### Added
+- Concurrent translation: chunks run in parallel (4 by default, env
+  `TRANSLATION_CONCURRENCY`, clamped 1-8); the resumable pipeline
+  processes checkpoint batches in waves so pause/resume semantics hold
+- `--initial-prompt` CLI option passing terminology hints to Whisper
+  (verified to fix proper-noun recognition)
+- VTT export in the project GUI alongside SRT/MP4/MP3
+- GUI: free-form language input (any Whisper language code, not just the
+  18 presets), storage overview with CLI cache clearing, and project
+  deletion with explicit confirmation
 - Resumable product workflow: SQLite project store, chunked transcription and
   translation with checkpoints, in-app subtitle proofreading table
   (`src/resumable_pipeline.py`, `src/project_store.py`, `src/product_gui.py`)

@@ -182,8 +182,8 @@ class ProductGUI:
             self._editor_rows(project_id),
             f"已打开「{project.name}」",
             *self._preview_updates(project_id),
-            CODE_TO_LANGUAGE.get(project.source_language, "自动检测"),
-            CODE_TO_LANGUAGE.get(project.target_language, "中文"),
+            CODE_TO_LANGUAGE.get(project.source_language, project.source_language),
+            CODE_TO_LANGUAGE.get(project.target_language, project.target_language),
             project.whisper_model,
             project.translation_model,
         )
@@ -272,7 +272,7 @@ class ProductGUI:
         result = self.pipeline.export_media(
             project_id,
             subtitle_mode={"双语": "bilingual", "原文": "source", "译文": "translation"}[subtitle_mode],
-            output_kind={"SRT 字幕": "srt", "MP4 视频": "mp4", "MP3 音频": "mp3"}[output_kind],
+            output_kind={"SRT 字幕": "srt", "VTT 字幕": "vtt", "MP4 视频": "mp4", "MP3 音频": "mp3"}[output_kind],
             background_image=background_image,
             title=title or None,
             artist=artist or None,
@@ -294,6 +294,66 @@ class ProductGUI:
                 self.settings.set_secret(provider, value)
         configured = [name for name, ok in self.settings.configured_providers().items() if ok]
         return "API 设置已保存。已配置：" + (", ".join(configured) if configured else "无（仍可使用 Google Translate）")
+
+    def _storage_summary(self) -> str:
+        """Storage overview: project workspace, database, and CLI transcription cache."""
+        def dir_size(path: Path) -> int:
+            total = 0
+            for item in path.rglob("*"):
+                try:
+                    if item.is_file():
+                        total += item.stat().st_size
+                except OSError:
+                    pass
+            return total
+
+        def human(size: int) -> str:
+            for unit in ("B", "KB", "MB", "GB"):
+                if size < 1024 or unit == "GB":
+                    return f"{size:.1f} {unit}" if unit != "B" else f"{size} B"
+                size /= 1024
+            return f"{size:.1f} GB"
+
+        projects = self.store.list_projects()
+        projects_size = dir_size(self.store.projects_dir) if self.store.projects_dir.exists() else 0
+        db_size = self.store.db_path.stat().st_size if self.store.db_path.exists() else 0
+
+        from .cache import get_cache
+
+        cache = get_cache()
+        cache_stats = cache.get_cache_stats()
+
+        return (
+            f"📦 项目数据：{len(projects)} 个项目，{human(projects_size)}"
+            f"（数据库 {human(db_size)}）<br>"
+            f"⚡ CLI 转录缓存：{cache_stats['total_entries']} 条，{cache_stats['total_size_mb']} MB"
+        )
+
+    def clear_transcription_cache(self) -> str:
+        from .cache import get_cache
+
+        get_cache().clear()
+        return "CLI 转录缓存已清空。<br>" + self._storage_summary()
+
+    def delete_project(self, project_id: Optional[str], confirmed: bool):
+        if not project_id:
+            raise gr.Error("请先在「最近项目」中选择要删除的项目")
+        if not confirmed:
+            raise gr.Error("为防误删，请先勾选「确认删除」复选框")
+        project = self.store.get_project(project_id)
+        name = project.name
+        self.store.delete_project(project_id)
+        for task in ("transcription", "translation"):
+            self.stop_flags.pop((project_id, task), None)
+        return (
+            None,
+            gr.update(choices=self._project_choices(), value=None),
+            self._summary(None),
+            [],
+            f"项目「{name}」已删除，媒体副本与数据一并清理。",
+            gr.update(visible=False, value=None),
+            gr.update(visible=False, value=None),
+        )
 
     def _css(self) -> str:
         return """
@@ -418,6 +478,9 @@ class ProductGUI:
                     recent_projects = gr.Dropdown(choices=self._project_choices(), label="最近项目", info="中断过的项目可以直接从这里继续")
                 with gr.Column(scale=1, min_width=150):
                     open_btn = gr.Button("打开项目", size="lg")
+                with gr.Column(scale=1, min_width=150):
+                    confirm_delete = gr.Checkbox(label="确认删除", scale=0)
+                    delete_project_btn = gr.Button("删除所选项目", variant="stop", size="sm")
 
             project_summary = gr.HTML(self._summary(None))
             status = gr.Textbox(label="状态", interactive=False, lines=2, elem_classes=["ot-status"])
@@ -433,9 +496,15 @@ class ProductGUI:
                         )
                         with gr.Column(scale=1):
                             project_name = gr.Textbox(label="项目名称（可选）")
-                            source_language = gr.Dropdown(choices=list(LANGUAGE_OPTIONS.keys()), value="自动检测", label="源语言")
+                            source_language = gr.Dropdown(
+                                choices=list(LANGUAGE_OPTIONS.keys()), value="自动检测", label="源语言",
+                                allow_custom_value=True,
+                                info="也支持任意 Whisper 语言代码直接输入（如 uk、id、vi）",
+                            )
                             target_language = gr.Dropdown(
-                                choices=[name for name in LANGUAGE_OPTIONS if name != "自动检测"], value="中文", label="目标语言"
+                                choices=[name for name in LANGUAGE_OPTIONS if name != "自动检测"], value="中文", label="目标语言",
+                                allow_custom_value=True,
+                                info="也支持任意语言代码直接输入（如 uk、id、vi）",
                             )
                     with gr.Accordion("高级设置", open=False):
                         with gr.Row():
@@ -481,7 +550,7 @@ class ProductGUI:
                 with gr.Tab("⑤ 导出"):
                     with gr.Row():
                         subtitle_mode = gr.Radio(["双语", "原文", "译文"], value="双语", label="字幕内容")
-                        output_kind = gr.Radio(["SRT 字幕", "MP4 视频", "MP3 音频"], value="SRT 字幕", label="输出")
+                        output_kind = gr.Radio(["SRT 字幕", "VTT 字幕", "MP4 视频", "MP3 音频"], value="SRT 字幕", label="输出")
                     with gr.Accordion("视频 / 音频外观与元数据", open=False):
                         background_image = gr.Image(label="背景图 / MP3 封面（音频转 MP4 时需要）", type="filepath")
                         font_size = gr.Slider(16, 64, value=24, step=1, label="视频字幕字号")
@@ -493,6 +562,10 @@ class ProductGUI:
                     exported_file = gr.File(label="导出文件")
 
                 with gr.Tab("⚙ 设置"):
+                    storage_md = gr.HTML(self._storage_summary())
+                    with gr.Row():
+                        storage_refresh_btn = gr.Button("刷新存储信息", size="sm")
+                        clear_cache_btn = gr.Button("清空 CLI 转录缓存", size="sm")
                     gr.Markdown("Google Translate 无需配置。只有选择其他翻译服务时才需要 API Key；密钥优先保存在系统凭据存储中。留空表示保留现有设置。")
                     with gr.Row():
                         deepseek_key = gr.Textbox(label="DeepSeek API Key", type="password")
@@ -536,6 +609,13 @@ class ProductGUI:
                 [deepseek_key, gemini_key, qwen_key, claude_key, openai_key],
                 [status],
             )
+            delete_project_btn.click(
+                self.delete_project,
+                [recent_projects, confirm_delete],
+                [project_state, recent_projects, project_summary, editor, status, video_preview, audio_preview],
+            )
+            storage_refresh_btn.click(lambda: self._storage_summary(), None, [storage_md])
+            clear_cache_btn.click(self.clear_transcription_cache, None, [storage_md])
         return app
 
     def _launch_options(self):

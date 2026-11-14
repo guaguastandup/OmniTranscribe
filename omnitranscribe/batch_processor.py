@@ -48,7 +48,8 @@ class BatchProcessor:
                  track_title: Optional[str] = None,
                  artist_name: Optional[str] = None,
                  album_name: Optional[str] = None,
-                 use_cache: bool = True):
+                 use_cache: bool = True,
+                 initial_prompt: Optional[str] = None):
         """
         Initialize the batch processor.
 
@@ -74,6 +75,8 @@ class BatchProcessor:
             artist_name: Artist name for MP3 metadata embedding
             album_name: Album name for MP3 metadata embedding
             use_cache: Whether to use the transcription cache
+            initial_prompt: Hint text for Whisper (proper nouns, jargon) that
+                steers recognition of domain-specific vocabulary
         """
         self.transcriber = AudioTranscriber(model_size, device, use_cache=use_cache)
         self.converter = SubtitleConverter()
@@ -105,6 +108,7 @@ class BatchProcessor:
         self.track_title = track_title
         self.artist_name = artist_name
         self.album_name = album_name
+        self.initial_prompt = initial_prompt
 
     def _get_translator(self) -> UniversalTranslator:
         """Build the translation client on first use."""
@@ -232,7 +236,8 @@ class BatchProcessor:
             # Step 2: Transcribe audio
             print(f"[{file_path.name}] Transcribing audio...")
             srt_content = self.transcriber.transcribe_audio(
-                current_audio_path, language=self.language
+                current_audio_path, language=self.language,
+                initial_prompt=self.initial_prompt
             )
             self.transcriber.save_srt(srt_content, str(original_srt_path))
 

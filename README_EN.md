@@ -133,7 +133,7 @@ The GUI interface provides:
 - 📁 Drag & drop audio/video file upload
 - 🌍 Visual language selection (99+ languages supported)
 - ⚙️ Model and device settings
-- 📤 Output format selection (Subtitles only / MP4 video / MP3 audio)
+- 📤 Output format selection (SRT / VTT subtitles / MP4 video / MP3 audio)
 - 🖼️ Background image and cover upload
 - 🎵 Author information editing (title, artist, album)
 - 📊 Real-time processing progress display
@@ -233,6 +233,13 @@ python run.py audio.mp3 --convert-to lrc
 
 # Convert existing subtitle file only
 python run.py --convert-only input.srt --convert-to vtt
+```
+
+### Proper-Noun Hints
+
+```bash
+# Improve recognition of names and jargon with a terminology hint
+python run.py audio.mp3 --initial-prompt "OmniTranscribe, Whisper, GPT-4o"
 ```
 
 ### Video Generation

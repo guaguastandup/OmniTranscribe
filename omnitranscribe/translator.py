@@ -24,6 +24,18 @@ except ImportError:
 DEFAULT_TIMEOUT = float(os.getenv("TRANSLATION_TIMEOUT", "120"))
 
 
+def _default_concurrency() -> int:
+    """Parallel LLM requests per translate_srt call (1-8, env TRANSLATION_CONCURRENCY)."""
+    try:
+        value = int(os.getenv("TRANSLATION_CONCURRENCY", "4"))
+    except ValueError:
+        value = 4
+    return max(1, min(8, value))
+
+
+DEFAULT_CONCURRENCY = _default_concurrency()
+
+
 # Language code to name mapping
 LANGUAGE_NAMES = {
     "zh": "中文",
@@ -231,7 +243,8 @@ class UniversalTranslator:
             return f.read().strip()
 
     def translate_srt(self, srt_content: str, prompt_path: str = "prompt.md",
-                     max_retries: int = 3, chunk_size: int = 20, target_language: str = "zh") -> str:
+                     max_retries: int = 3, chunk_size: int = 20, target_language: str = "zh",
+                     max_concurrent_chunks: Optional[int] = None) -> str:
         """
         Translate SRT content to target language using the configured model with chunking
 
@@ -241,6 +254,9 @@ class UniversalTranslator:
             max_retries: Maximum number of retries for failed requests
             chunk_size: Number of subtitle entries per chunk (default: 20)
             target_language: Target language code (default: zh for Chinese)
+            max_concurrent_chunks: Parallel API requests (default: env
+                TRANSLATION_CONCURRENCY, clamped 1-8; 1 keeps the old serial
+                behavior)
 
         Returns:
             Translated SRT content in target language
@@ -258,24 +274,46 @@ class UniversalTranslator:
         # Load the translation prompt
         system_prompt = self.load_prompt(prompt_path)
 
-        translated_chunks = []
+        # Pre-compute each chunk's global numbering offset (read-only, thread-safe)
+        start_indexes = []
+        offset = 0
+        for chunk in chunks:
+            start_indexes.append(offset)
+            offset += len(self._parse_srt_content(chunk))
 
-        # Track the running subtitle offset so each chunk keeps global numbering
-        # (parsing each chunk once instead of re-parsing chunks[:i] every iteration)
-        start_index = 0
-        for i, chunk in enumerate(chunks, 1):
-            print(f"Translating chunk {i}/{len(chunks)}...")
+        workers = DEFAULT_CONCURRENCY if max_concurrent_chunks is None else max(1, max_concurrent_chunks)
+        if workers == 1 or len(chunks) < 2:
+            translated_chunks = []
+            for i, chunk in enumerate(chunks):
+                print(f"Translating chunk {i + 1}/{len(chunks)}...")
+                translated_chunks.append(
+                    self._translate_chunk(chunk, system_prompt, max_retries, start_indexes[i], target_language)
+                )
+                # Small delay between requests to stay gentle on rate limits
+                if i + 1 < len(chunks):
+                    time.sleep(0.1)
+        else:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            translated_chunk = self._translate_chunk(
-                chunk, system_prompt, max_retries, start_index, target_language
-            )
-
-            translated_chunks.append(translated_chunk)
-            start_index += len(self._parse_srt_content(chunk))
-
-            # Add a small delay between chunks to avoid rate limiting (reduced from 1s to 0.1s)
-            if i < len(chunks):
-                time.sleep(0.1)
+            workers = min(workers, len(chunks))
+            print(f"Translating {len(chunks)} chunks with {workers} parallel workers...")
+            translated_chunks = [None] * len(chunks)
+            # A failed chunk re-raises after in-flight requests settle; retries
+            # already happened inside _translate_chunk at that point.
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(
+                        self._translate_chunk, chunk, system_prompt,
+                        max_retries, start_indexes[i], target_language
+                    ): i
+                    for i, chunk in enumerate(chunks)
+                }
+                done = 0
+                for future in as_completed(futures):
+                    index = futures[future]
+                    translated_chunks[index] = future.result()
+                    done += 1
+                    print(f"Translated chunk {index + 1}/{len(chunks)} ({done}/{len(chunks)} done)")
 
         # Combine all translated chunks
         final_translation = self._combine_translated_chunks(translated_chunks)

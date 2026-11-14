@@ -68,7 +68,7 @@ class AudioTranscriber:
                 print(f"Reusing loaded Whisper model '{model_size}' on device: {device}")
         self.model = _MODEL_CACHE[model_key]
 
-    def transcribe_audio(self, audio_path: str, language: str = "auto", progress_callback: Optional[Callable[[int, int], None]] = None, word_timestamps: bool = False) -> str:
+    def transcribe_audio(self, audio_path: str, language: str = "auto", progress_callback: Optional[Callable[[int, int], None]] = None, word_timestamps: bool = False, initial_prompt: Optional[str] = None) -> str:
         """
         Transcribe audio file to text
 
@@ -79,6 +79,8 @@ class AudioTranscriber:
             word_timestamps: Enable word-level timestamps. Off by default: the
                 SRT output only uses segment timestamps, and whisper's word
                 alignment crashes on Apple MPS (float64 is unsupported there).
+            initial_prompt: Hint text for Whisper (proper nouns, jargon, names)
+                that steers recognition of domain-specific vocabulary
 
         Returns:
             SRT formatted subtitle content
@@ -117,8 +119,7 @@ class AudioTranscriber:
             duration = file_size / (1024 * 1024) * 60
             print(f"Audio duration (estimated): {duration:.1f} seconds")
 
-        result = self.model.transcribe(
-            audio_path,
+        transcribe_kwargs = dict(
             language=whisper_language,
             task="transcribe",
             word_timestamps=word_timestamps,
@@ -128,6 +129,10 @@ class AudioTranscriber:
             condition_on_previous_text=True,
             suppress_tokens="-1",
         )
+        if initial_prompt:
+            transcribe_kwargs["initial_prompt"] = initial_prompt
+
+        result = self.model.transcribe(audio_path, **transcribe_kwargs)
 
         # Convert to SRT format
         srt_content = self._convert_to_srt(result["segments"])

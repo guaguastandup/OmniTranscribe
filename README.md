@@ -137,7 +137,7 @@ GUI 界面提供：
 - 📁 拖拽上传音频/视频文件
 - 🌍 可视化语言选择（支持 99+ 种语言）
 - ⚙️ 模型和设备设置
-- 📤 输出格式选择（仅字幕 / MP4 视频 / MP3 音频）
+- 📤 输出格式选择（SRT / VTT 字幕 / MP4 视频 / MP3 音频）
 - 🖼️ 背景图片和封面上传
 - 🎵 作者信息编辑（标题、艺术家、专辑）
 - 📊 实时处理进度显示
@@ -286,6 +286,13 @@ python run.py --clear-cache
 
 # 禁用缓存（强制重新转录）
 python run.py audio.mp3 --no-cache
+```
+
+#### 专有名词提示
+
+```bash
+# 用术语提示提升专有名词/行话的识别准确率
+python run.py audio.mp3 --initial-prompt "OmniTranscribe, Whisper, GPT-4o"
 ```
 
 #### 仅转录不翻译

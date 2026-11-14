@@ -14,9 +14,13 @@ SRT = (
 def make_translator() -> UniversalTranslator:
     """Build an instance without running __init__ (no API keys needed).
 
-    The helpers under test are pure and never touch instance state.
+    The helpers under test are pure; only the log line in translate_srt
+    touches self.model / self.service, so set harmless placeholders.
     """
-    return UniversalTranslator.__new__(UniversalTranslator)
+    translator = UniversalTranslator.__new__(UniversalTranslator)
+    translator.model = "test-model"
+    translator.service = "test"
+    return translator
 
 
 class SrtHelperTests(unittest.TestCase):
@@ -38,6 +42,52 @@ class SrtHelperTests(unittest.TestCase):
     def test_combine_chunks_rejoins_with_blank_lines(self):
         combined = self.translator._combine_translated_chunks(["a", "", "b"])
         self.assertEqual(combined, "a\n\nb")
+
+
+class ParallelTranslationTests(unittest.TestCase):
+    def setUp(self):
+        self.translator = make_translator()
+        self.translator.load_prompt = lambda *a, **k: "system prompt"
+
+    def _srt(self, entries: int) -> str:
+        return "\n\n".join(
+            f"{i}\n00:00:{i:02d},000 --> 00:00:{i:02d},999\nline {i}"
+            for i in range(1, entries + 1)
+        )
+
+    def test_parallel_chunks_preserve_order(self):
+        import random
+        import time
+
+        seen_offsets = []
+
+        def fake_chunk(chunk, system_prompt, max_retries, start_index, target_language):
+            seen_offsets.append(start_index)
+            time.sleep(random.random() * 0.02)  # force out-of-order completion
+            return chunk
+
+        self.translator._translate_chunk = fake_chunk
+        result = self.translator.translate_srt(
+            self._srt(30), prompt_path="ignored", chunk_size=5,
+            max_concurrent_chunks=4,
+        )
+        rows = self.translator._parse_srt_content(result)
+        self.assertEqual(len(rows), 30)
+        # texts must come back in original order despite random completion
+        self.assertIn("line 1", result.split("\n\n")[0])
+        self.assertTrue(result.index("line 1") < result.index("line 15") < result.index("line 30"))
+        # every chunk got its correct global offset
+        self.assertEqual(sorted(seen_offsets), [0, 5, 10, 15, 20, 25])
+
+    def test_serial_mode_still_works(self):
+        self.translator._translate_chunk = (
+            lambda chunk, sp, mr, si, tl: chunk
+        )
+        result = self.translator.translate_srt(
+            self._srt(6), prompt_path="ignored", chunk_size=2,
+            max_concurrent_chunks=1,
+        )
+        self.assertEqual(len(self.translator._parse_srt_content(result)), 6)
 
 
 class CleanSrtContentTests(unittest.TestCase):

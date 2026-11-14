@@ -264,6 +264,7 @@ class ResumablePipeline:
         *,
         batch_size: int = 20,
         include_manual: bool = False,
+        concurrency: Optional[int] = None,
         progress: ProgressCallback = None,
         should_stop: StopCallback = None,
     ) -> Dict:
@@ -285,20 +286,14 @@ class ResumablePipeline:
         # plan from only missing/stale rows makes an interrupted run naturally resume.
         self.store.replace_task_units(project_id, "translation", units)
         self.store.update_project(project_id, stage="translating")
-        from .translator import UniversalTranslator
+        from .translator import DEFAULT_CONCURRENCY, UniversalTranslator
 
         translator = UniversalTranslator(model=project.translation_model)
+        workers = DEFAULT_CONCURRENCY if concurrency is None else max(1, concurrency)
         total = len(batches)
-        for index, batch in enumerate(batches):
-            if should_stop and should_stop():
-                checkpoint = self.store.refresh_checkpoint(
-                    project_id, "translation", status="paused"
-                )
-                self.store.update_project(project_id, stage="translation_paused")
-                return checkpoint
 
+        def run_batch(index: int, batch: List[Dict]) -> None:
             self.store.set_task_unit_status(project_id, "translation", index, "running")
-            _progress(progress, index, total, f"翻译第 {index + 1}/{total} 组字幕")
             source_srt = render_srt(
                 SubtitleRow(
                     sequence=local_index,
@@ -333,8 +328,48 @@ class ResumablePipeline:
                 self.store.set_task_unit_status(
                     project_id, "translation", index, "failed", error=str(exc)
                 )
-                self.store.update_project(project_id, stage="translation_paused")
                 raise
+
+        # Batches run in fixed-size waves: every batch still checkpoints itself
+        # independently (interrupted waves simply redo their unfinished batches),
+        # while the stop flag is honored between waves.
+        import concurrent.futures
+
+        wave_size = min(workers, total)
+        index = 0
+        while index < total:
+            if should_stop and should_stop():
+                checkpoint = self.store.refresh_checkpoint(
+                    project_id, "translation", status="paused"
+                )
+                self.store.update_project(project_id, stage="translation_paused")
+                return checkpoint
+
+            wave = [(i, batches[i]) for i in range(index, min(index + wave_size, total))]
+            if len(wave) == 1:
+                _progress(progress, wave[0][0], total, f"翻译第 {wave[0][0] + 1}/{total} 组字幕")
+                try:
+                    run_batch(*wave[0])
+                except BaseException:
+                    self.store.update_project(project_id, stage="translation_paused")
+                    raise
+            else:
+                _progress(progress, wave[0][0], total, f"并行翻译第 {wave[0][0] + 1}-{wave[-1][0] + 1}/{total} 组字幕")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(wave)) as pool:
+                    futures = [pool.submit(run_batch, i, batch) for i, batch in wave]
+                    # Drain all futures so in-flight batches still checkpoint,
+                    # then surface the first failure.
+                    first_error = None
+                    for future in futures:
+                        try:
+                            future.result()
+                        except BaseException as exc:
+                            if first_error is None:
+                                first_error = exc
+                if first_error is not None:
+                    self.store.update_project(project_id, stage="translation_paused")
+                    raise first_error
+            index += len(wave)
 
         checkpoint = self.store.refresh_checkpoint(project_id, "translation", status="complete")
         self.store.update_project(project_id, stage="translated")
@@ -425,6 +460,11 @@ class ResumablePipeline:
         subtitle_path = self.export_subtitles(project_id, subtitle_mode)
         if output_kind == "srt":
             return subtitle_path
+
+        if output_kind == "vtt":
+            from .converter import SubtitleConverter
+
+            return Path(SubtitleConverter().convert_file(str(subtitle_path), "vtt"))
 
         project = self.store.get_project(project_id)
         source = Path(project.source_path)

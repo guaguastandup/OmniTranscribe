@@ -256,6 +256,10 @@ def main():
         help="Target language for translation (env: WHISPER_TARGET_LANGUAGE; default: zh). Use 'none' to skip translation"
     )
     parser.add_argument(
+        "--initial-prompt",
+        help="Transcription hint for Whisper: proper nouns, terminology, names (improves domain-specific accuracy)"
+    )
+    parser.add_argument(
         "--strict-mode",
         action="store_true",
         default=config.get('transcription.strict_mode', False),
@@ -753,6 +757,7 @@ def main():
         artist_name=args.artist_name,
         album_name=args.album_name,
         use_cache=not args.no_cache,
+        initial_prompt=args.initial_prompt,
     )
 
     result = processor.process_single_file(
