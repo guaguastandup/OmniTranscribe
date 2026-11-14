@@ -1,10 +1,25 @@
 name: Desktop Release
 
+# ⚠️ Runner billing (billed minutes per wall-clock minute, on top of the
+# included quota):
+#   ubuntu-latest  = 1x
+#   windows-latest = 2x
+#   macos-latest   = 10x  <-- the packaging jobs below are the expensive ones
+# One full release run typically costs 100-300 billed minutes total.
+#
+# Triggers are deliberately narrow: manual dispatch (Actions tab) or a v*
+# tag push. Nothing here runs on ordinary commits. Check consumption with:
+#   python scripts/actions_usage.py
+
 on:
   workflow_dispatch:
   push:
     tags:
       - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -13,20 +28,29 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Record start time
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install lightweight test dependency
-        run: python -m pip install platformdirs
-      - name: Run persistence and subtitle tests
-        run: PYTHONPATH=. python -m unittest tests.test_project_store tests.test_resumable_pipeline -v
+      - name: Install lightweight test dependencies
+        run: python -m pip install ruff platformdirs
+      - name: Lint
+        run: ruff check omnitranscribe tests run.py desktop_entry.py assets/generate_default_bg.py
+      - name: Run unit tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -t . -v
+      - name: Report job duration
+        if: always()
+        run: echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (ubuntu runner bills 1x)"
 
   windows:
     needs: test
     runs-on: windows-latest
     steps:
+      - name: Record start time
+        run: echo "JOB_START=$(date +%s)" >> $env:GITHUB_ENV
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -54,6 +78,10 @@ jobs:
           if ($version.StartsWith("v")) { $version = $version.Substring(1) }
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           & $iscc "/DMyAppVersion=$version" packaging\windows\OmniTranscribe.iss
+      - name: Report job duration
+        if: always()
+        shell: pwsh
+        run: echo "Job wall time: $([int]((Get-Date) - [datetime]::Parse($env:JOB_START, $null, 'RoundtripKind')).TotalSeconds)s (windows runner bills 2x)"
       - uses: actions/upload-artifact@v4
         with:
           name: OmniTranscribe-Windows
@@ -64,6 +92,8 @@ jobs:
     needs: test
     runs-on: macos-latest
     steps:
+      - name: Record start time
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -86,6 +116,9 @@ jobs:
         run: |
           mkdir -p release
           hdiutil create -volname "OmniTranscribe" -srcfolder "dist/OmniTranscribe.app" -ov -format UDZO "release/OmniTranscribe-macOS.dmg"
+      - name: Report job duration
+        if: always()
+        run: echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (macOS runner bills 10x)"
       - uses: actions/upload-artifact@v4
         with:
           name: OmniTranscribe-macOS

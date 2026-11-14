@@ -162,6 +162,33 @@ def translate_with_new_service(text: str, api_key: str) -> str:
     pass
 ```
 
+## CI and Actions Quota
+
+GitHub Actions runners consume billed minutes at different rates:
+**ubuntu 1x, windows 2x, macOS 10x**. On public repositories Linux/Windows
+are effectively free, but macOS runner minutes still draw from the account
+quota — a single desktop release run can cost 100-300 minutes.
+
+This repository keeps CI deliberately cheap:
+
+- **Product Tests** runs only on code changes (markdown/image/asset-only
+  pushes skip it), and concurrent pushes to the same branch cancel
+  superseded runs.
+- **Desktop Release** (the expensive macOS/Windows packaging jobs) only
+  triggers on a `v*` tag push or a manual dispatch from the Actions tab.
+  It never runs on ordinary commits.
+
+To see what CI actually spent, run:
+
+```bash
+python scripts/actions_usage.py            # recent runs + estimated minutes
+python scripts/actions_usage.py --days 30  # last 30 days only
+```
+
+Account-wide consumption (all repositories, including private ones) is
+visible at GitHub → Settings → Billing → Actions — that is where quota is
+consumed; this repo's own totals appear in the script output above.
+
 ## Code Review Process
 
 1. All submissions require review before merging

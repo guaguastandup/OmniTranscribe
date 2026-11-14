@@ -1,16 +1,31 @@
 name: Product Tests
 
+# Runs on code changes only; doc/image/asset-only pushes skip CI entirely.
+# Concurrent pushes to the same branch cancel superseded runs so repeated
+# pushes don't queue up runner minutes.
 on:
   pull_request:
   push:
     branches:
       - main
       - "agent/**"
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+      - ".gitignore"
+      - "assets/**"
+      - "omnitranscribe.png"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
+      - name: Record start time
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -24,3 +39,6 @@ jobs:
         run: python -m py_compile run.py desktop_entry.py omnitranscribe/*.py
       - name: Run unit tests
         run: PYTHONPATH=. python -m unittest discover -s tests -t . -v
+      - name: Report job duration
+        if: always()
+        run: echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (ubuntu runner bills 1x)"
