@@ -43,7 +43,8 @@ jobs:
         run: PYTHONPATH=. python -m unittest discover -s tests -t . -v
       - name: Report job duration
         if: always()
-        run: echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (ubuntu runner bills 1x)"
+        run: >-
+          echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (ubuntu runner bills 1x)"
 
   windows:
     needs: test
@@ -81,7 +82,8 @@ jobs:
       - name: Report job duration
         if: always()
         shell: pwsh
-        run: echo "Job wall time: $([int]((Get-Date) - [datetime]::Parse($env:JOB_START, $null, 'RoundtripKind')).TotalSeconds)s (windows runner bills 2x)"
+        run: >-
+          echo "Job wall time: $([int]((Get-Date) - [datetime]::Parse($env:JOB_START, $null, 'RoundtripKind')).TotalSeconds)s (windows runner bills 2x)"
       - uses: actions/upload-artifact@v4
         with:
           name: OmniTranscribe-Windows
@@ -118,7 +120,8 @@ jobs:
           hdiutil create -volname "OmniTranscribe" -srcfolder "dist/OmniTranscribe.app" -ov -format UDZO "release/OmniTranscribe-macOS.dmg"
       - name: Report job duration
         if: always()
-        run: echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (macOS runner bills 10x)"
+        run: >-
+          echo "Job wall time: $(( $(date +%s) - $JOB_START ))s (macOS runner bills 10x)"
       - uses: actions/upload-artifact@v4
         with:
           name: OmniTranscribe-macOS
