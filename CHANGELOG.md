@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2026-11-13
 
 ### Added
+- CLI transcription now shows real-time progress (whisper frame bar;
+  configurable via the new `verbose` option on `AudioTranscriber.
+  transcribe_audio`)
+- Video generation encodes in a single ffmpeg pass (scale/pad/subtitles
+  chained in one filter) instead of a base encode plus a subtitle
+  re-encode; roughly halves export time on long videos
 - Concurrent translation: chunks run in parallel (4 by default, env
   `TRANSLATION_CONCURRENCY`, clamped 1-8); the resumable pipeline
   processes checkpoint batches in waves so pause/resume semantics hold

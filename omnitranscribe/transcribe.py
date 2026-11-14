@@ -68,7 +68,7 @@ class AudioTranscriber:
                 print(f"Reusing loaded Whisper model '{model_size}' on device: {device}")
         self.model = _MODEL_CACHE[model_key]
 
-    def transcribe_audio(self, audio_path: str, language: str = "auto", progress_callback: Optional[Callable[[int, int], None]] = None, word_timestamps: bool = False, initial_prompt: Optional[str] = None) -> str:
+    def transcribe_audio(self, audio_path: str, language: str = "auto", progress_callback: Optional[Callable[[int, int], None]] = None, word_timestamps: bool = False, initial_prompt: Optional[str] = None, verbose: Optional[bool] = False) -> str:
         """
         Transcribe audio file to text
 
@@ -81,6 +81,9 @@ class AudioTranscriber:
                 alignment crashes on Apple MPS (float64 is unsupported there).
             initial_prompt: Hint text for Whisper (proper nouns, jargon, names)
                 that steers recognition of domain-specific vocabulary
+            verbose: Whisper feedback during long transcriptions. False shows
+                a frame progress bar, True streams each segment's text,
+                None is fully silent.
 
         Returns:
             SRT formatted subtitle content
@@ -128,6 +131,7 @@ class AudioTranscriber:
             patience=1.0,     # Beam search patience
             condition_on_previous_text=True,
             suppress_tokens="-1",
+            verbose=verbose,
         )
         if initial_prompt:
             transcribe_kwargs["initial_prompt"] = initial_prompt

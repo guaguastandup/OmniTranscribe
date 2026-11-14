@@ -230,32 +230,6 @@ class FinalVideoGenerator:
         try:
             print("Creating video with subtitles...")
 
-            # Step 1: Create basic video (image + audio)
-            print("Creating base video...")
-            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_video:
-                temp_video_path = tmp_video.name
-
-            cmd1 = [
-                'ffmpeg', '-y',
-                '-loop', '1',
-                '-i', image_path,
-                '-i', audio_to_use,
-                '-t', str(video_duration),
-                '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black',
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                '-b:a', '192k',
-                '-pix_fmt', 'yuv420p',
-                '-r', '24',
-                '-shortest',
-                temp_video_path
-            ]
-
-            subprocess.run(cmd1, check=True)
-            print(f"Base video created: {temp_video_path}")
-
-            # Step 2: Add subtitles
-            print("Adding subtitles...")
             srt_abs_path = os.path.abspath(srt_path)
 
             # Verify the SRT file exists before passing to FFmpeg
@@ -270,7 +244,6 @@ class FinalVideoGenerator:
                     "请安装完整版 FFmpeg（如 macOS: brew install ffmpeg）后重试。"
                 )
 
-            # Build subtitle filter with Chinese font support
             print(f"Using font: {self.font_path}")
 
             # Prepare environment for FFmpeg
@@ -278,7 +251,14 @@ class FinalVideoGenerator:
 
             # Explicit "filename=" key keeps the filter chain parseable on
             # ffmpeg 8+ (a quoted positional followed by :key=value no longer
-            # parses there).
+            # parses there). Colons and quotes in the path must be escaped
+            # for the filter parser (Windows drive letters use colons).
+            filter_path = (
+                srt_abs_path.replace("\\", "/")
+                .replace(":", r"\:")
+                .replace("'", r"\'")
+            )
+
             if self.font_path and os.path.exists(self.font_path):
                 font_dir = os.path.dirname(self.font_path)
                 font_file = os.path.basename(self.font_path)
@@ -292,32 +272,41 @@ class FinalVideoGenerator:
                 # These tell FFmpeg where to look for fonts
                 env['ASS_FONTPATH'] = font_dir
 
-                # Build the subtitle filter with the font name (without extension)
-                # libass will find it via ASS_FONTPATH
-                filter_with_font = (
-                    f"subtitles=filename='{srt_abs_path}':force_style="
-                    f"'FontName={font_name},Fontsize={font_size},"
-                    f"PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment={alignment}'"
+                subtitle_style = (
+                    f"FontName={font_name},Fontsize={font_size},"
+                    f"PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment={alignment}"
                 )
             else:
-                # No custom font, use default styling
-                filter_with_font = (
-                    f"subtitles=filename='{srt_abs_path}':force_style="
-                    f"'Fontsize={font_size},Alignment={alignment}'"
-                )
+                subtitle_style = f"Fontsize={font_size},Alignment={alignment}"
 
-            print(f"Subtitle filter: {filter_with_font}")
+            # Single encoding pass: scale/pad the looping image and burn the
+            # subtitles in one filter chain. This replaces the previous
+            # two-pass approach (base video, then subtitle re-encode), which
+            # encoded the video twice.
+            video_filter = (
+                "scale=1280:720:force_original_aspect_ratio=decrease,"
+                "pad=1280:720:(ow-iw)/2:(oh-ih)/2:black,"
+                f"subtitles=filename='{filter_path}':force_style='{subtitle_style}'"
+            )
+            print(f"Video filter: {video_filter}")
 
-            cmd2 = [
+            cmd = [
                 'ffmpeg', '-y',
-                '-i', temp_video_path,
-                '-vf', filter_with_font,
+                '-loop', '1',
+                '-i', image_path,
+                '-i', audio_to_use,
+                '-t', str(video_duration),
+                '-vf', video_filter,
                 '-c:v', 'libx264',
-                '-c:a', 'copy',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-pix_fmt', 'yuv420p',
+                '-r', '24',
+                '-shortest',
                 output_path
             ]
 
-            subprocess.run(cmd2, check=True, env=env)
+            subprocess.run(cmd, check=True, env=env)
             print(f"Video with subtitles completed: {output_path}")
             return output_path
 
@@ -326,13 +315,6 @@ class FinalVideoGenerator:
             if temp_audio_path and os.path.exists(temp_audio_path):
                 try:
                     os.unlink(temp_audio_path)
-                except OSError:
-                    pass
-
-            # Clean up temporary video file
-            if 'temp_video_path' in locals() and os.path.exists(temp_video_path):
-                try:
-                    os.unlink(temp_video_path)
                 except OSError:
                     pass
 
